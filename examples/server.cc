@@ -40,6 +40,15 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 
+
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "server.h"
 #include "network.h"
 #include "debug.h"
@@ -584,6 +593,8 @@ ssize_t send_server_handshake(ngtcp2_conn *conn, uint32_t flags,
                               void *user_data) {
   auto h = static_cast<Handler *>(user_data);
 
+  std::cout << "tjx: Prepare to send server handshake!" << std::endl;
+
   if (ppkt_num) {
     *ppkt_num = std::uniform_int_distribution<uint64_t>(
         0, NGTCP2_MAX_INITIAL_PKT_NUM)(randgen);
@@ -596,6 +607,8 @@ ssize_t send_server_handshake(ngtcp2_conn *conn, uint32_t flags,
   if (ppkt_num && len == 0) {
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
+
+  std::cout << "tjx: Send server handshake!" << std::endl;
 
   return len;
 }
@@ -692,6 +705,8 @@ int recv_stream0_data(ngtcp2_conn *conn, const uint8_t *data, size_t datalen,
                       void *user_data) {
   auto h = static_cast<Handler *>(user_data);
 
+  std::cout << "tjx: prepare to recv_stream0!" << std::endl;
+
   h->write_client_handshake(data, datalen);
 
   if (ngtcp2_conn_get_handshake_completed(h->conn())) {
@@ -699,7 +714,8 @@ int recv_stream0_data(ngtcp2_conn *conn, const uint8_t *data, size_t datalen,
   } else if (h->tls_handshake() != 0) {
     return NGTCP2_ERR_TLS_HANDSHAKE;
   }
-
+  
+  std::cout << "tjx: recv_stream0!" << std::endl;
   return 0;
 }
 } // namespace
@@ -738,6 +754,29 @@ int stream_close(ngtcp2_conn *conn, uint64_t stream_id, uint16_t app_error_code,
   return 0;
 }
 } // namespace
+
+uint32_t get_server_local_ip() {
+    struct ifaddrs * ifAddrStruct=NULL;
+    in_addr* tmpAddrPtr=NULL;
+
+    getifaddrs(&ifAddrStruct);
+    char *type1 = "lo";
+    char *type2 = "en0";
+
+    while (ifAddrStruct!=NULL)
+    {
+        if (ifAddrStruct->ifa_addr->sa_family==AF_INET)
+        {   // check it is IP6
+            // is a valid IP6 Address
+            in_addr tmpAddrPtr = ((struct sockaddr_in*)ifAddrStruct->ifa_addr)->sin_addr;
+            if ((strcmp(ifAddrStruct->ifa_name, type1) == 0) || (strcmp(ifAddrStruct->ifa_name, type2) == 0)) {
+                return *(reinterpret_cast<uint32_t*>(&tmpAddrPtr));
+            }
+        }
+        ifAddrStruct = ifAddrStruct->ifa_next;
+    }
+    return 0;
+}
 
 int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
                   uint32_t version) {
@@ -795,6 +834,9 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
+  settings.server_unicast_ip = get_server_local_ip();
+  settings.server_unicast_ttl = 1000;
+  std::cout << "tjx: setting_server_unicast_ip: " << settings.server_unicast_ip << std::endl;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
@@ -1039,6 +1081,8 @@ int Handler::recv_client_initial(uint64_t conn_id) {
 
   ngtcp2_conn_set_handshake_rx_keys(conn_, key.data(), keylen, iv.data(),
                                     ivlen);
+
+  std::cout << "tjx: Server recv initial!" << std::endl;
 
   return 0;
 }
@@ -1958,6 +2002,7 @@ int transport_params_add_cb(SSL *ssl, unsigned int ext_type,
   auto h = static_cast<Handler *>(SSL_get_app_data(ssl));
   auto conn = h->conn();
 
+  std::cout << "tjx: add_transport_params! " << std::endl;
   ngtcp2_transport_params params;
   int param_type = context == SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS
                        ? NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS
@@ -2015,7 +2060,9 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
   auto conn = h->conn();
 
   int rv;
-
+  
+  std::cout << "tjx: parse_transport_params! " << std::endl;
+  
   ngtcp2_transport_params params;
 
   rv = ngtcp2_decode_transport_params(

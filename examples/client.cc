@@ -41,6 +41,12 @@
 
 #include <openssl/bio.h>
 #include <openssl/err.h>
+#include <openssl/sha.h>
+#include <iostream>
+#include <cstdio>
+#include <cstdlib>
+#include "stdlib.h"   
+#include "stdio.h" 
 
 #include "client.h"
 #include "network.h"
@@ -61,6 +67,73 @@ Config config{};
 
 namespace {
 constexpr size_t MAX_BYTES_IN_FLIGHT = 1460 * 10;
+} // namespace
+
+namespace {
+int create_sock(Address &remote_addr, const char *addr, const char *port) {
+  addrinfo hints{};
+  addrinfo *res, *rp;
+  int rv;
+
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_DGRAM;
+
+  rv = getaddrinfo(addr, port, &hints, &res);
+  if (rv != 0) {
+    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
+    return -1;
+  }
+
+  auto res_d = defer(freeaddrinfo, res);
+
+  int fd = -1;
+
+  struct sockaddr_in client_addr;
+  client_addr.sin_family = AF_INET; 
+  client_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); 
+  client_addr.sin_port = htons(12345); 
+  
+  for (rp = res; rp; rp = rp->ai_next) {
+    fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    if (fd == -1) {
+      continue;
+    }
+    
+   // ::bind(fd, (struct sockaddr*)&client_addr, sizeof(client_addr));
+
+    if (connect(fd, rp->ai_addr, rp->ai_addrlen) == -1) {
+      goto next;
+    }
+
+    break;
+
+
+  next:
+    close(fd);
+  }
+
+  if (!rp) {
+    std::cerr << "Could not connect" << std::endl;
+    return -1;
+  }
+
+  auto val = 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
+                 static_cast<socklen_t>(sizeof(val))) == -1) {
+    return -1;
+  }
+  
+  struct sockaddr_in null_addr;
+  null_addr.sin_family = AF_UNSPEC; 
+
+  connect(fd, (struct sockaddr*)&null_addr, sizeof(null_addr));
+  ::bind(fd, (struct sockaddr*)&client_addr, sizeof(client_addr));
+  remote_addr.len = rp->ai_addrlen;
+  memcpy(&remote_addr.su, rp->ai_addr, rp->ai_addrlen);
+
+  return fd;
+}
+
 } // namespace
 
 Buffer::Buffer(const uint8_t *data, size_t datalen)
@@ -94,7 +167,7 @@ int bio_write(BIO *b, const char *buf, int len) {
   BIO_clear_retry_flags(b);
 
   auto c = static_cast<Client *>(BIO_get_data(b));
-
+  
   rv = c->write_client_handshake(reinterpret_cast<const uint8_t *>(buf), len);
   if (rv != 0) {
     return -1;
@@ -175,6 +248,7 @@ void writecb(struct ev_loop *loop, ev_io *w, int revents) {
   ev_io_stop(loop, w);
 
   auto c = static_cast<Client *>(w->data);
+  std::cout << "tjx: write data: " << w->data << std::endl;
 
   auto rv = c->on_write();
   if (rv == NETWORK_ERR_SEND_FATAL) {
@@ -318,14 +392,15 @@ ssize_t send_client_initial(ngtcp2_conn *conn, uint32_t flags,
   }
 
   c->handle_early_data();
+  std::cout << "tjx: send initial!" << std::endl;
 
   if (ppkt_num) {
     *ppkt_num = std::uniform_int_distribution<uint64_t>(
         0, NGTCP2_MAX_INITIAL_PKT_NUM)(randgen);
   }
-
+  
   auto len = c->read_client_handshake(pdest);
-
+  
   return len;
 }
 } // namespace
@@ -388,6 +463,8 @@ int acked_stream_data_offset(ngtcp2_conn *conn, uint64_t stream_id,
 namespace {
 int handshake_completed(ngtcp2_conn *conn, void *user_data) {
   auto c = static_cast<Client *>(user_data);
+  
+  std::cout << "tjx: output_addr:" << c->remote_addr_.su.in.sin_addr.s_addr << std::endl;
 
   if (!config.quiet) {
     debug::handshake_completed(conn, user_data);
@@ -523,11 +600,13 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
 
   fd_ = fd;
   datafd_ = datafd;
-
+/*
   if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
     std::cerr << "connect: " << strerror(errno) << std::endl;
     return -1;
   }
+  std::cout << "tjx: why need connect like tcp" << std::endl;
+*/
 
   ssl_ = SSL_new(ssl_ctx_);
   auto bio = BIO_new(create_bio_method());
@@ -556,6 +635,7 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   } else {
     SSL_set_tlsext_host_name(ssl_, addr);
   }
+  std::cout << "tjx: addr: " << addr << std::endl;
 
   if (config.session_file) {
     auto f = BIO_new_file(config.session_file, "r");
@@ -614,20 +694,26 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
+  settings.server_unicast_ip = 0;
+  settings.server_unicast_ttl = 0;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   rv = ngtcp2_conn_client_new(&conn_, conn_id, version, &callbacks, &settings,
                               this);
+
+  std::cout << "tjx: new connection!" << std::endl;
   if (rv != 0) {
     std::cerr << "ngtcp2_conn_client_new: " << ngtcp2_strerror(rv) << std::endl;
     return -1;
   }
 
   std::array<uint8_t, 32> handshake_secret, secret;
+  conn_id = ngtcp2_conn_negotiated_conn_id(conn_);
   rv = crypto::derive_handshake_secret(
       handshake_secret.data(), handshake_secret.size(), conn_id,
       reinterpret_cast<const uint8_t *>(NGTCP2_QUIC_V1_SALT),
       str_size(NGTCP2_QUIC_V1_SALT));
+ 
   if (rv != 0) {
     std::cerr << "crypto::derive_handshake_secret() failed" << std::endl;
     return -1;
@@ -683,7 +769,7 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
 
   ngtcp2_conn_set_handshake_rx_keys(conn_, key.data(), keylen, iv.data(),
                                     ivlen);
-
+  
   ev_io_set(&wev_, fd_, EV_WRITE);
   ev_io_set(&rev_, fd_, EV_READ);
 
@@ -693,6 +779,23 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   ev_signal_start(loop_, &sigintev_);
 
   return 0;
+}
+
+int Client::OnMigration(uint32_t peer_address) {
+  sockaddr_in remote_addr;
+  in_addr server_addr;
+  server_addr.s_addr = peer_address;
+  remote_addr.sin_family = AF_INET;
+  remote_addr.sin_port = remote_addr_.su.in.sin_port;
+  remote_addr.sin_addr = server_addr;
+  
+  remote_addr_.su.in = remote_addr;
+  remote_addr_.len = sizeof(remote_addr);
+  if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
+    std::cerr << "connect: " << strerror(errno) << std::endl;
+    return -1;
+  }
+  return 1;
 }
 
 int Client::tls_handshake(bool initial) {
@@ -744,7 +847,8 @@ int Client::tls_handshake(bool initial) {
       return -1;
     }
   }
-
+	
+  std::cout << "tjx: conn completed!" << std::endl;
   ngtcp2_conn_handshake_completed(conn_);
 
   if (!config.quiet) {
@@ -825,10 +929,14 @@ int Client::feed_data(uint8_t *data, size_t datalen) {
 
 int Client::on_read() {
   std::array<uint8_t, 65536> buf;
+  sockaddr_union su;
+  socklen_t addrLen;
+  addrLen=sizeof(struct sockaddr_in);
 
   for (;;) {
     auto nread =
-        recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
+        recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrLen);
+    std::cout << "tjx:recv a udp packet!!!" << std::endl;
 
     if (nread == -1) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -881,7 +989,8 @@ int Client::on_write() {
     if (n == 0) {
       break;
     }
-
+    
+    std::cout << "tjx: Send Packet!!" << std::endl;
     sendbuf_.push(n);
 
     auto rv = send_packet();
@@ -979,6 +1088,7 @@ void Client::schedule_retransmit() {
 }
 
 int Client::write_client_handshake(const uint8_t *data, size_t datalen) {
+  std::cout << "tjx: write_client_handshake! " << std::endl;
   chandshake_.emplace_back(data, datalen);
   return 0;
 }
@@ -1167,7 +1277,7 @@ int Client::send_packet() {
   ssize_t nwrite = 0;
 
   do {
-    nwrite = send(fd_, sendbuf_.rpos(), sendbuf_.size(), 0);
+    nwrite = sendto(fd_, sendbuf_.rpos(), sendbuf_.size(), 0, (struct sockaddr*) &remote_addr_.su, sizeof(remote_addr_.su));
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 
   if (nwrite == -1) {
@@ -1223,8 +1333,12 @@ int Client::start_interactive_input() {
 int Client::send_interactive_input() {
   ssize_t nread;
   std::array<uint8_t, 1_k> buf;
+  sockaddr_union su;
+  socklen_t addrLen;
+  addrLen=sizeof(struct sockaddr_in);
+  
 
-  while ((nread = read(datafd_, buf.data(), buf.size())) == -1 &&
+  while ((nread = recvfrom(datafd_, buf.data(), buf.size(), 0, &su.sa, &addrLen)) == -1 &&
          errno == EINTR)
     ;
   if (nread == -1) {
@@ -1475,6 +1589,7 @@ int transport_params_add_cb(SSL *ssl, unsigned int ext_type,
   auto conn = c->conn();
 
   ngtcp2_transport_params params;
+  std::cout << "tjx: client_add_transport_params!" << std::endl;
 
   rv = ngtcp2_conn_get_local_transport_params(
       conn, &params, NGTCP2_TRANSPORT_PARAMS_TYPE_CLIENT_HELLO);
@@ -1525,12 +1640,19 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
                        ? NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS
                        : NGTCP2_TRANSPORT_PARAMS_TYPE_NEW_SESSION_TICKET;
 
+  std::cout << "tjx: decode_transport_params! type: " << param_type << std::endl;
   rv = ngtcp2_decode_transport_params(&params, param_type, in, inlen);
   if (rv != 0) {
     std::cerr << "ngtcp2_decode_transport_params: " << ngtcp2_strerror(rv)
               << std::endl;
     *al = SSL_AD_ILLEGAL_PARAMETER;
     return -1;
+  }
+  std::cout << "tjx: decode_transport_params  server_ip: " << params.server_unicast_ip << std::endl;
+
+  if ((param_type == 1) && (params.server_unicast_ip != 0)) {
+    std::cout << "tjx: begin to migration" << std::endl;
+    c->OnMigration(params.server_unicast_ip);
   }
 
   if (!config.quiet) {
@@ -1624,59 +1746,7 @@ SSL_CTX *create_ssl_ctx() {
 }
 } // namespace
 
-namespace {
-int create_sock(Address &remote_addr, const char *addr, const char *port) {
-  addrinfo hints{};
-  addrinfo *res, *rp;
-  int rv;
 
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_DGRAM;
-
-  rv = getaddrinfo(addr, port, &hints, &res);
-  if (rv != 0) {
-    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
-    return -1;
-  }
-
-  auto res_d = defer(freeaddrinfo, res);
-
-  int fd = -1;
-
-  for (rp = res; rp; rp = rp->ai_next) {
-    fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    if (fd == -1) {
-      continue;
-    }
-
-    if (connect(fd, rp->ai_addr, rp->ai_addrlen) == -1) {
-      goto next;
-    }
-
-    break;
-
-  next:
-    close(fd);
-  }
-
-  if (!rp) {
-    std::cerr << "Could not connect" << std::endl;
-    return -1;
-  }
-
-  auto val = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
-                 static_cast<socklen_t>(sizeof(val))) == -1) {
-    return -1;
-  }
-
-  remote_addr.len = rp->ai_addrlen;
-  memcpy(&remote_addr.su, rp->ai_addr, rp->ai_addrlen);
-
-  return fd;
-}
-
-} // namespace
 
 namespace {
 int run(Client &c, const char *addr, const char *port) {
@@ -1686,6 +1756,8 @@ int run(Client &c, const char *addr, const char *port) {
   if (fd == -1) {
     return -1;
   }
+
+  std::cout << "tjx: remote_addr_port: " << remote_addr.su.in.sin_port << std::endl;
 
   if (c.init(fd, remote_addr, addr, config.fd, config.version) != 0) {
     return -1;
@@ -1783,6 +1855,68 @@ Options:
 )";
 }
 } // namespace
+
+namespace {
+#define SHA256_ROTL(a,b) (((a>>(32-b))&(0x7fffffff>>(31-b)))|(a<<b))  
+#define SHA256_SR(a,b) ((a>>b)&(0x7fffffff>>(b-1)))  
+#define SHA256_Ch(x,y,z) ((x&y)^((~x)&z))  
+#define SHA256_Maj(x,y,z) ((x&y)^(x&z)^(y&z))  
+#define SHA256_E0(x) (SHA256_ROTL(x,30)^SHA256_ROTL(x,19)^SHA256_ROTL(x,10))  
+#define SHA256_E1(x) (SHA256_ROTL(x,26)^SHA256_ROTL(x,21)^SHA256_ROTL(x,7))  
+#define SHA256_O0(x) (SHA256_ROTL(x,25)^SHA256_ROTL(x,14)^SHA256_SR(x,3))  
+#define SHA256_O1(x) (SHA256_ROTL(x,15)^SHA256_ROTL(x,13)^SHA256_SR(x,10))
+char* StrSHA256(const char* str, long long length, char* sha256){  
+    char *pp, *ppend;  
+    long l, i, W[64], T1, T2, A, B, C, D, E, F, G, H, H0, H1, H2, H3, H4, H5, H6, H7;  
+    H0 = 0x6a09e667, H1 = 0xbb67ae85, H2 = 0x3c6ef372, H3 = 0xa54ff53a;  
+    H4 = 0x510e527f, H5 = 0x9b05688c, H6 = 0x1f83d9ab, H7 = 0x5be0cd19;  
+    long K[64] = {  
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,  
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,  
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,  
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,  
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,  
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,  
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,  
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,  
+    };  
+    l = length + ((length % 64 > 56) ? (128 - length % 64) : (64 - length % 64));  
+    if (!(pp = (char*)malloc((unsigned long)l))) return 0;  
+    for (i = 0; i < length; pp[i + 3 - 2 * (i % 4)] = str[i], i++);  
+    for (pp[i + 3 - 2 * (i % 4)] = 128, i++; i < l; pp[i + 3 - 2 * (i % 4)] = 0, i++);  
+    *((long*)(pp + l - 4)) = length << 3;  
+    *((long*)(pp + l - 8)) = length >> 29;  
+    for (ppend = pp + l; pp < ppend; pp += 64){  
+        for (i = 0; i < 16; W[i] = ((long*)pp)[i], i++);  
+        for (i = 16; i < 64; W[i] = (SHA256_O1(W[i - 2]) + W[i - 7] + SHA256_O0(W[i - 15]) + W[i - 16]), i++);  
+        A = H0, B = H1, C = H2, D = H3, E = H4, F = H5, G = H6, H = H7;  
+        for (i = 0; i < 64; i++){  
+            T1 = H + SHA256_E1(E) + SHA256_Ch(E, F, G) + K[i] + W[i];  
+            T2 = SHA256_E0(A) + SHA256_Maj(A, B, C);  
+            H = G, G = F, F = E, E = D + T1, D = C, C = B, B = A, A = T1 + T2;  
+        }  
+        H0 += A, H1 += B, H2 += C, H3 += D, H4 += E, H5 += F, H6 += G, H7 += H;  
+    }  
+    free(pp - l);  
+    sprintf(sha256, "%08X%08X%08X%08X%08X%08X%08X%08X", H0, H1, H2, H3, H4, H5, H6, H7);  
+    return sha256;  
+}  
+}
+
+namespace {
+const char* get_hashed_ip(const char *url) {
+  url = "hello world!";
+  long long len = strlen(url);
+  char hashed_result[256];
+  StrSHA256(url, len, hashed_result);
+  std::cout << hashed_result << std::endl;
+  url = "www.baidu.com";
+  len = strlen(url);
+  StrSHA256(url, len, hashed_result);
+  std::cout << hashed_result << std::endl;
+  return "127.0.0.1";
+} 
+}
 
 int main(int argc, char **argv) {
   config_set_default(config);
@@ -1910,7 +2044,8 @@ int main(int argc, char **argv) {
         mmap(nullptr, config.datalen, PROT_READ, MAP_SHARED, fd, 0));
   }
 
-  auto addr = argv[optind++];
+  auto addr = get_hashed_ip(argv[optind++]);
+  // auto addr = argv[optind++];
   auto port = argv[optind++];
 
   auto ssl_ctx = create_ssl_ctx();

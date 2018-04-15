@@ -4001,9 +4001,7 @@ settings_copy_from_transport_params(ngtcp2_settings *dest,
   dest->omit_connection_id = src->omit_connection_id;
   dest->max_packet_size = src->max_packet_size;
   memcpy(dest->stateless_reset_token, src->stateless_reset_token,
-         sizeof(dest->stateless_reset_token));
-  dest->server_unicast_ip = src->server_unicast_ip;
-  dest->server_unicast_ttl = src->server_unicast_ttl;
+         sizeof(dest->stateless_reset_token));  
   dest->ack_delay_exponent = src->ack_delay_exponent;
 }
 
@@ -4018,7 +4016,10 @@ static void transport_params_copy_from_settings(ngtcp2_transport_params *dest,
   dest->max_packet_size = src->max_packet_size;
   memcpy(dest->stateless_reset_token, src->stateless_reset_token,
          sizeof(dest->stateless_reset_token));
-  dest->server_unicast_ip = src->server_unicast_ip;
+  dest->server_unicast_ip[0] = src->server_unicast_ip[0];
+  dest->server_unicast_ip[1] = src->server_unicast_ip[1];
+  dest->server_unicast_ip[2] = src->server_unicast_ip[2];
+  dest->server_unicast_ip[3] = src->server_unicast_ip[3];
   dest->server_unicast_ttl = src->server_unicast_ttl;
   dest->ack_delay_exponent = src->ack_delay_exponent;
 }

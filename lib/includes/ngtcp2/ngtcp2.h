@@ -491,7 +491,7 @@ typedef struct {
   uint8_t omit_connection_id;
   uint16_t max_packet_size;
   uint8_t stateless_reset_token[NGTCP2_STATELESS_RESET_TOKENLEN];
-  uint32_t server_unicast_ip;
+  uint32_t server_unicast_ip[4];
   uint32_t server_unicast_ttl;
   uint8_t ack_delay_exponent;
 } ngtcp2_transport_params;
@@ -505,7 +505,7 @@ typedef struct {
   uint8_t omit_connection_id;
   uint16_t max_packet_size;
   uint8_t stateless_reset_token[NGTCP2_STATELESS_RESET_TOKENLEN];
-  uint32_t server_unicast_ip;
+  uint32_t server_unicast_ip[4];
   uint32_t server_unicast_ttl;
   uint8_t ack_delay_exponent;
 } ngtcp2_settings;

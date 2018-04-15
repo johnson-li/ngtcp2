@@ -131,7 +131,7 @@ class QuicMigrationListener {
   public:
     QuicMigrationListener() {}
     virtual ~QuicMigrationListener() {}
-    virtual int OnMigration(uint32_t peer_address) = 0;
+    virtual int OnMigration(uint32_t* peer_address) = 0;
 };
 
 class Client : public QuicMigrationListener {
@@ -191,7 +191,7 @@ public:
   int handle_error(int liberr);
   void make_stream_early();
   void handle_early_data();
-  virtual int OnMigration(uint32_t peer_address);
+  virtual int OnMigration(uint32_t* peer_address);
   Address remote_addr_;
 
 private:

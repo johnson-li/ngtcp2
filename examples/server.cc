@@ -755,22 +755,28 @@ int stream_close(ngtcp2_conn *conn, uint64_t stream_id, uint16_t app_error_code,
 }
 } // namespace
 
-uint32_t get_server_local_ip() {
+uint32_t* get_server_local_ip() {
     struct ifaddrs * ifAddrStruct=NULL;
-    in_addr* tmpAddrPtr=NULL;
 
     getifaddrs(&ifAddrStruct);
     char *type1 = "lo";
     char *type2 = "en0";
+    void *tmpAddrPtr = NULL;
+    uint32_t *tmp;
+    uint32_t addrPtr[4];
 
     while (ifAddrStruct!=NULL)
     {
-        if (ifAddrStruct->ifa_addr->sa_family==AF_INET)
-        {   // check it is IP6
-            // is a valid IP6 Address
-            in_addr tmpAddrPtr = ((struct sockaddr_in*)ifAddrStruct->ifa_addr)->sin_addr;
+        if (ifAddrStruct->ifa_addr->sa_family==AF_INET6)
+        {   // check it is a valid IPV6 Address
+            tmpAddrPtr = &((struct sockaddr_in6*)ifAddrStruct->ifa_addr)->sin6_addr;
             if ((strcmp(ifAddrStruct->ifa_name, type1) == 0) || (strcmp(ifAddrStruct->ifa_name, type2) == 0)) {
-                return *(reinterpret_cast<uint32_t*>(&tmpAddrPtr));
+		tmp = reinterpret_cast<uint32_t*>(tmpAddrPtr);
+                addrPtr[0] = *(tmp);
+		addrPtr[1] = *(tmp + 1);
+		addrPtr[2] = *(tmp + 2);
+		addrPtr[3] = *(tmp + 3);
+		return addrPtr;
             }
         }
         ifAddrStruct = ifAddrStruct->ifa_next;
@@ -834,7 +840,12 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
-  settings.server_unicast_ip = get_server_local_ip();
+  uint32_t *tmp;
+  tmp = get_server_local_ip();
+  settings.server_unicast_ip[0] = tmp[0];
+  settings.server_unicast_ip[1] = tmp[1];
+  settings.server_unicast_ip[2] = tmp[2];
+  settings.server_unicast_ip[3] = tmp[3];
   settings.server_unicast_ttl = 1000;
   std::cout << "tjx: setting_server_unicast_ip: " << settings.server_unicast_ip << std::endl;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;

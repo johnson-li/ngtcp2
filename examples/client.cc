@@ -99,7 +99,6 @@ int create_sock(Address &remote_addr, const char *addr, const char *port) {
       continue;
     }
     
-   // ::bind(fd, (struct sockaddr*)&client_addr, sizeof(client_addr));
 
     if (connect(fd, rp->ai_addr, rp->ai_addrlen) == -1) {
       goto next;
@@ -694,8 +693,7 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
-  settings.server_unicast_ip = 0;
-  settings.server_unicast_ttl = 0;
+
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   rv = ngtcp2_conn_client_new(&conn_, conn_id, version, &callbacks, &settings,
@@ -781,15 +779,18 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   return 0;
 }
 
-int Client::OnMigration(uint32_t peer_address) {
-  sockaddr_in remote_addr;
-  in_addr server_addr;
-  server_addr.s_addr = peer_address;
-  remote_addr.sin_family = AF_INET;
-  remote_addr.sin_port = remote_addr_.su.in.sin_port;
-  remote_addr.sin_addr = server_addr;
+int Client::OnMigration(uint32_t* peer_address) {
+  sockaddr_in6 remote_addr;
+  in6_addr server_addr;
+  uint8_t *tmpAddrPtr;
+  tmpAddrPtr = reinterpret_cast<uint8_t*>(peer_address);
+  for (int i = 0; i < 16; i++) 
+    server_addr.s6_addr[i] = *(tmpAddrPtr+i);
+  remote_addr.sin6_family = AF_INET;
+  remote_addr.sin6_port = remote_addr_.su.in.sin_port;
+  remote_addr.sin6_addr = server_addr;
   
-  remote_addr_.su.in = remote_addr;
+  remote_addr_.su.in6 = remote_addr;
   remote_addr_.len = sizeof(remote_addr);
   if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
     std::cerr << "connect: " << strerror(errno) << std::endl;

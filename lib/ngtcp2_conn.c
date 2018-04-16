@@ -4006,7 +4006,7 @@ settings_copy_from_transport_params(ngtcp2_settings *dest,
 }
 
 static void transport_params_copy_from_settings(ngtcp2_transport_params *dest,
-                                                const ngtcp2_settings *src) {
+                                                ngtcp2_settings *src) {
   dest->initial_max_stream_data = src->max_stream_data;
   dest->initial_max_data = src->max_data;
   dest->initial_max_stream_id_bidi = src->max_stream_id_bidi;
@@ -4020,7 +4020,12 @@ static void transport_params_copy_from_settings(ngtcp2_transport_params *dest,
   dest->server_unicast_ip[1] = src->server_unicast_ip[1];
   dest->server_unicast_ip[2] = src->server_unicast_ip[2];
   dest->server_unicast_ip[3] = src->server_unicast_ip[3];
-  dest->server_unicast_ttl = src->server_unicast_ttl;
+  //dest->server_unicast_ttl = src->server_unicast_ttl;
+  src->server_unicast_ip[0] = 0;
+  src->server_unicast_ip[1] = 0;
+  src->server_unicast_ip[2] = 0;
+  src->server_unicast_ip[3] = 0;
+  //src->server_unicast_ttl = 0;
   dest->ack_delay_exponent = src->ack_delay_exponent;
 }
 

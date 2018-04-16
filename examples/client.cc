@@ -74,7 +74,7 @@ int create_sock(Address &remote_addr, const char *addr, const char *port) {
   addrinfo hints{};
   addrinfo *res, *rp;
   int rv;
-
+  
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_DGRAM;
 
@@ -88,13 +88,14 @@ int create_sock(Address &remote_addr, const char *addr, const char *port) {
 
   int fd = -1;
 
-  struct sockaddr_in client_addr;
-  client_addr.sin_family = AF_INET; 
-  client_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); 
-  client_addr.sin_port = htons(12345); 
+  struct sockaddr_in6 client_addr;
+  client_addr.sin6_family = AF_INET6; 
+  inet_pton(AF_INET6, "::1", &(client_addr.sin6_addr.s6_addr)); 
+  client_addr.sin6_port = htons(12345); 
   
   for (rp = res; rp; rp = rp->ai_next) {
     fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    std::cout << "tjx: " << rp->ai_family << " ipv6: " << AF_INET6 << std::endl;
     if (fd == -1) {
       continue;
     }
@@ -323,7 +324,7 @@ Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
       nsread_(0),
       conn_(nullptr),
       crypto_ctx_{},
-      sendbuf_{NGTCP2_MAX_PKTLEN_IPV4},
+      sendbuf_{NGTCP2_MAX_PKTLEN_IPV6},
       last_stream_id_(0),
       nstreams_done_(0),
       resumption_(false) {
@@ -463,7 +464,7 @@ namespace {
 int handshake_completed(ngtcp2_conn *conn, void *user_data) {
   auto c = static_cast<Client *>(user_data);
   
-  std::cout << "tjx: output_addr:" << c->remote_addr_.su.in.sin_addr.s_addr << std::endl;
+  std::cout << "tjx: output_addr:" << c->remote_addr_.su.in6.sin6_addr.s6_addr << std::endl;
 
   if (!config.quiet) {
     debug::handshake_completed(conn, user_data);
@@ -693,7 +694,11 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
-
+  settings.server_unicast_ip[0] = 0;
+  settings.server_unicast_ip[1] = 0;
+  settings.server_unicast_ip[2] = 0;
+  settings.server_unicast_ip[3] = 0;
+  //settings.server_unicast_ttl = 0;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   rv = ngtcp2_conn_client_new(&conn_, conn_id, version, &callbacks, &settings,
@@ -782,12 +787,10 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
 int Client::OnMigration(uint32_t* peer_address) {
   sockaddr_in6 remote_addr;
   in6_addr server_addr;
-  uint8_t *tmpAddrPtr;
-  tmpAddrPtr = reinterpret_cast<uint8_t*>(peer_address);
-  for (int i = 0; i < 16; i++) 
-    server_addr.s6_addr[i] = *(tmpAddrPtr+i);
-  remote_addr.sin6_family = AF_INET;
-  remote_addr.sin6_port = remote_addr_.su.in.sin_port;
+  for (int i = 0; i < 4; i++) 
+    server_addr.s6_addr32[i] = peer_address[i];
+  remote_addr.sin6_family = AF_INET6;
+  remote_addr.sin6_port = remote_addr_.su.in6.sin6_port;
   remote_addr.sin6_addr = server_addr;
   
   remote_addr_.su.in6 = remote_addr;
@@ -1599,11 +1602,12 @@ int transport_params_add_cb(SSL *ssl, unsigned int ext_type,
     return -1;
   }
 
-  constexpr size_t bufsize = 64;
+  constexpr size_t bufsize = 128;
   auto buf = std::make_unique<uint8_t[]>(bufsize);
 
   auto nwrite = ngtcp2_encode_transport_params(
       buf.get(), bufsize, NGTCP2_TRANSPORT_PARAMS_TYPE_CLIENT_HELLO, &params);
+  std::cout << "tjx: transport_params length: " << nwrite << std::endl;
   if (nwrite < 0) {
     std::cerr << "ngtcp2_encode_transport_params: " << ngtcp2_strerror(nwrite)
               << std::endl;
@@ -1753,12 +1757,13 @@ namespace {
 int run(Client &c, const char *addr, const char *port) {
   Address remote_addr;
 
+  std::cout << "tjx: input_addr: " << addr << std::endl;
   auto fd = create_sock(remote_addr, addr, port);
   if (fd == -1) {
     return -1;
   }
 
-  std::cout << "tjx: remote_addr_port: " << remote_addr.su.in.sin_port << std::endl;
+  std::cout << "tjx: remote_addr_port: " << remote_addr.su.in6.sin6_port << std::endl;
 
   if (c.init(fd, remote_addr, addr, config.fd, config.version) != 0) {
     return -1;
@@ -1915,7 +1920,7 @@ const char* get_hashed_ip(const char *url) {
   len = strlen(url);
   StrSHA256(url, len, hashed_result);
   std::cout << hashed_result << std::endl;
-  return "127.0.0.1";
+  return "::1";
 } 
 }
 

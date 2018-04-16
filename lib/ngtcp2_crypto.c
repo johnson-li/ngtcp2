@@ -116,13 +116,14 @@ ssize_t ngtcp2_encode_transport_params(uint8_t *dest, size_t destlen,
     len += 5;
   }
 
-  if (params->server_unicast_ip) {
-    len += 32;
+  if ((params->server_unicast_ip[0] != 0) || (params->server_unicast_ip[1] != 0) || (params->server_unicast_ip[2] != 0) || (params->server_unicast_ip[3] != 0)) {
+    len += 20;
   }
-
-  if (params->server_unicast_ttl) {
+  
+  /*
+  if (params->server_unicast_ttl != 0) {
     len += 8;	  
-  }
+  }*/
 
   if (destlen < len) {
     return NGTCP2_ERR_NOBUF;
@@ -192,7 +193,7 @@ ssize_t ngtcp2_encode_transport_params(uint8_t *dest, size_t destlen,
     p = ngtcp2_put_uint16be(p, params->max_packet_size);
   }
   
-  if (params->server_unicast_ip) {
+  if ((params->server_unicast_ip[0] != 0) || (params->server_unicast_ip[1] != 0) || (params->server_unicast_ip[2] != 0) || (params->server_unicast_ip[3] != 0)) {
     p = ngtcp2_put_uint16be(p, NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_IP);
     p = ngtcp2_put_uint16be(p, 16);
     p = ngtcp2_put_uint32be(p, params->server_unicast_ip[0]);
@@ -200,12 +201,12 @@ ssize_t ngtcp2_encode_transport_params(uint8_t *dest, size_t destlen,
     p = ngtcp2_put_uint32be(p, params->server_unicast_ip[2]);
     p = ngtcp2_put_uint32be(p, params->server_unicast_ip[3]);
   }
-
-  if (params->server_unicast_ttl) {
+  /*
+  if (params->server_unicast_ttl != 0) {
     p = ngtcp2_put_uint16be(p, NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_TTL);
     p = ngtcp2_put_uint16be(p, 4);
     p = ngtcp2_put_uint32be(p, params->server_unicast_ttl);
-  }
+  }*/
 
 
   if (params->ack_delay_exponent != NGTCP2_DEFAULT_ACK_DELAY_EXPONENT) {
@@ -400,17 +401,9 @@ int ngtcp2_decode_transport_params(ngtcp2_transport_params *params,
       p += sizeof(params->stateless_reset_token);
       break;
 
-    /*case NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_IP:
-      flags |= 1u << NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_IP;
-      if (ngtcp2_get_uint32(p) != sizeof(uint32_t)) {
-        return NGTCP2_ERR_MALFORMED_TRANSPORT_PARAM;
-      }
-      params->server_unicast_ip = ngtcp2_get_uint32(p);
-      p += sizeof(uint32_t);
-      break;*/
     case NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_IP:
       flags |= 1u << NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_IP;
-      if (ngtcp2_get_uint16(p) != sizeof(uint32_t)) {
+      if (ngtcp2_get_uint16(p) != sizeof(uint32_t)*4) {
         return NGTCP2_ERR_MALFORMED_TRANSPORT_PARAM;
       }
       p += sizeof(uint16_t);
@@ -426,7 +419,7 @@ int ngtcp2_decode_transport_params(ngtcp2_transport_params *params,
       params->server_unicast_ip[3] = ngtcp2_get_uint32(p);
       p += sizeof(uint32_t);
       break;
-    
+    /*
     case NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_TTL:
       flags |= 1u << NGTCP2_TRANSPORT_PARAM_SERVER_UNICAST_TTL;
       if (ngtcp2_get_uint16(p) != sizeof(uint32_t)) {
@@ -438,7 +431,7 @@ int ngtcp2_decode_transport_params(ngtcp2_transport_params *params,
       }
       params->server_unicast_ttl = ngtcp2_get_uint32(p);
       p += sizeof(uint32_t);
-      break;
+      break;*/
 
     case NGTCP2_TRANSPORT_PARAM_ACK_DELAY_EXPONENT:
       flags |= 1u << NGTCP2_TRANSPORT_PARAM_ACK_DELAY_EXPONENT;

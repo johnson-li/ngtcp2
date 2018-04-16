@@ -543,7 +543,7 @@ Handler::Handler(struct ev_loop *loop, SSL_CTX *ssl_ctx, Server *server,
       shandshake_idx_(0),
       conn_(nullptr),
       crypto_ctx_{},
-      sendbuf_{NGTCP2_MAX_PKTLEN_IPV4},
+      sendbuf_{NGTCP2_MAX_PKTLEN_IPV6},
       conn_id_(std::uniform_int_distribution<uint64_t>(
           0, std::numeric_limits<uint64_t>::max())(randgen)),
       client_conn_id_(client_conn_id),
@@ -757,30 +757,35 @@ int stream_close(ngtcp2_conn *conn, uint64_t stream_id, uint16_t app_error_code,
 
 uint32_t* get_server_local_ip() {
     struct ifaddrs * ifAddrStruct=NULL;
+    std::cout << "tjx: get local ip" << std::endl;
 
     getifaddrs(&ifAddrStruct);
     char *type1 = "lo";
     char *type2 = "en0";
-    void *tmpAddrPtr = NULL;
-    uint32_t *tmp;
-    uint32_t addrPtr[4];
+    uint32_t *addrPtr = new uint32_t[4];
 
     while (ifAddrStruct!=NULL)
     {
         if (ifAddrStruct->ifa_addr->sa_family==AF_INET6)
         {   // check it is a valid IPV6 Address
-            tmpAddrPtr = &((struct sockaddr_in6*)ifAddrStruct->ifa_addr)->sin6_addr;
             if ((strcmp(ifAddrStruct->ifa_name, type1) == 0) || (strcmp(ifAddrStruct->ifa_name, type2) == 0)) {
-		tmp = reinterpret_cast<uint32_t*>(tmpAddrPtr);
-                addrPtr[0] = *(tmp);
-		addrPtr[1] = *(tmp + 1);
-		addrPtr[2] = *(tmp + 2);
-		addrPtr[3] = *(tmp + 3);
+		std::cout << "tjx: get ipv6 addr" << std::endl;
+
+                addrPtr[0] = ((struct sockaddr_in6*)(ifAddrStruct->ifa_addr))->sin6_addr.s6_addr32[0];
+		addrPtr[1] = ((struct sockaddr_in6*)(ifAddrStruct->ifa_addr))->sin6_addr.s6_addr32[1];
+		addrPtr[2] = ((struct sockaddr_in6*)(ifAddrStruct->ifa_addr))->sin6_addr.s6_addr32[2];
+		addrPtr[3] = ((struct sockaddr_in6*)(ifAddrStruct->ifa_addr))->sin6_addr.s6_addr32[3];
+		std::cout << "tjx: addr:" << addrPtr[0] << std::endl;
+		std::cout << "tjx: addr:" << addrPtr[1] << std::endl;
+		std::cout << "tjx: addr:" << addrPtr[2] << std::endl;
+		std::cout << "tjx: addr:" << addrPtr[3] << std::endl;
+		std::cout << "tjx: get local ip successfully" << std::endl;
 		return addrPtr;
             }
         }
         ifAddrStruct = ifAddrStruct->ifa_next;
     }
+    
     return 0;
 }
 
@@ -842,11 +847,12 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
   uint32_t *tmp;
   tmp = get_server_local_ip();
+  std::cout << "tjx: localip: " << std::endl;
   settings.server_unicast_ip[0] = tmp[0];
   settings.server_unicast_ip[1] = tmp[1];
   settings.server_unicast_ip[2] = tmp[2];
   settings.server_unicast_ip[3] = tmp[3];
-  settings.server_unicast_ttl = 1000;
+  //settings.server_unicast_ttl = 1000;
   std::cout << "tjx: setting_server_unicast_ip: " << settings.server_unicast_ip << std::endl;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
@@ -1732,9 +1738,10 @@ int Server::on_read() {
   std::array<uint8_t, 64_k> buf;
   int rv;
   ngtcp2_pkt_hd hd;
-
+  std::cout << "tjx: ready to read" << std::endl;
   auto nread =
       recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
+
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1747,8 +1754,10 @@ int Server::on_read() {
     }
     return 0;
   }
+  
 
   rv = ngtcp2_pkt_decode_hd(&hd, buf.data(), nread);
+
   if (rv < 0) {
     std::cerr << "Could not decode QUIC packet header: " << ngtcp2_strerror(rv)
               << std::endl;
@@ -1756,6 +1765,7 @@ int Server::on_read() {
   }
 
   auto conn_id = hd.conn_id;
+
 
   auto handler_it = handlers_.find(conn_id);
   if (handler_it == std::end(handlers_)) {
@@ -1805,6 +1815,7 @@ int Server::on_read() {
       }
 
       conn_id = h->conn_id();
+      std::cout << "tjx: connid: " << conn_id << std::endl;
       handlers_.emplace(conn_id, std::move(h));
       ctos_.emplace(client_conn_id, conn_id);
       return 0;
@@ -2035,6 +2046,8 @@ int transport_params_add_cb(SSL *ssl, unsigned int ext_type,
 
   auto nwrite =
       ngtcp2_encode_transport_params(buf.get(), bufsize, param_type, &params);
+
+  std::cout << "tjx: transport_params length: " << nwrite << std::endl;
   if (nwrite < 0) {
     std::cerr << "ngtcp2_encode_transport_params: "
               << ngtcp2_strerror(static_cast<int>(nwrite)) << std::endl;
@@ -2206,6 +2219,7 @@ int create_sock(const char *addr, const char *port, int family) {
     }
 
     if (rp->ai_family == AF_INET6) {
+      std::cout << "tjx: is ipv6" << std::endl;
       if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val,
                      static_cast<socklen_t>(sizeof(val))) == -1) {
         close(fd);

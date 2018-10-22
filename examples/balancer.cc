@@ -48,6 +48,8 @@
 #include "shared.h"
 #include "http.h"
 
+
+
 using namespace ngtcp2;
 
 namespace {
@@ -61,6 +63,16 @@ Config config{};
 namespace {
 constexpr size_t MAX_BYTES_IN_FLIGHT = 1460 * 10;
 } // namespace
+
+namespace {
+MYSQL *mysql_connect() {
+  MYSQL *mysql = (MYSQL *) calloc(1, sizeof(MYSQL));
+  mysql_init(mysql);
+  mysql_real_connect(mysql, "127.0.0.1", "root", "root", "sid", 3306, NULL, 0);
+  printf("Connected to data based");
+  return mysql;
+}
+}
 
 Buffer::Buffer(const uint8_t *data, size_t datalen)
     : buf{data, data + datalen},
@@ -1647,6 +1659,7 @@ void Server::close() {
 
 int Server::init(int fd) {
   fd_ = fd;
+  mysql_ = mysql_connect();
 
   ev_io_set(&wev_, fd_, EV_WRITE);
   ev_io_set(&rev_, fd_, EV_READ);

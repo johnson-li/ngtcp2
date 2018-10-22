@@ -53,6 +53,7 @@
 #include <sys/socket.h>
 #include <ifaddrs.h>
 #include <string.h>
+#include <mysql/mysql.h>
 
 using namespace ngtcp2;
 
@@ -295,6 +296,7 @@ private:
   struct ev_loop *loop_;
   SSL_CTX *ssl_ctx_;
   int fd_;
+  MYSQL *mysql_;
   ev_io wev_;
   ev_io rev_;
   ev_signal sigintev_;

@@ -125,6 +125,11 @@ PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.1.1],
 if test "x${have_openssl}" = "xno"; then
   AC_MSG_NOTICE($OPENSSL_PKG_ERRORS)
 fi
+PKG_CHECK_MODULES([LIBMYSQLCLIENT], [mysqlclient >= 5.7.23],
+                  [have_libmysqlclient=yes], [have_libmysqlclient=no])
+if test "x${have_libmysqlclient}" = "xno"; then
+  AC_MSG_NOTICE($LIBMYSQLCLIENT_PKG_ERRORS)
+fi
 
 # libev (for examples)
 # libev does not have pkg-config file.  Check it in an old way.
@@ -140,6 +145,16 @@ if test "x${have_libev}" = "xyes"; then
     AC_SUBST([LIBEV_CFLAGS])
   fi
 fi
+#AC_CHECK_LIB([mysqlclient], [main], [have_libmysqlclient=yes], [have_libmysqlclient=no], [-lm])
+#if test "x${have_libmysqlclient}" = "xyes"; then
+#  AC_CHECK_HEADER([mysql.h], [have_libmysqlclient=yes], [have_libmysqlclient=no])
+#  if test "x${have_libmysqlclient}" = "xyes"; then
+#    LIBMYSQLCLIENT_LIBS=-lmysqlclient
+#    LIBMYSQLCLIENT_CFLAGS=
+#    AC_SUBST([LIBMYSQLCLIENT_LIBS])
+#    AC_SUBST([LIBMYSQLCLIENT_CFLAGS])
+#  fi
+#fi
 LIBS=$save_LIBS
 
 # Checks for header files.
@@ -324,4 +339,5 @@ AC_MSG_NOTICE([summary of build options:
     Libs:
       OpenSSL:        ${have_openssl} (CFLAGS='${OPENSSL_CFLAGS}' LIBS='${OPENSSL_LIBS}')
       Libev:          ${have_libev} (CFLAGS='${LIBEV_CFLAGS}' LIBS='${LIBEV_LIBS}')
+      Libmysqlclient: ${have_libmysqlclient} (CFLAGS='${LIBMYSQLCLIENT_CFLAGS}' LIBS='${LIBMYSQLCLIENT_LIBS}')
 ])

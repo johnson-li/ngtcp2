@@ -40,7 +40,7 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 
-#include "server.h"
+#include "balancer.h"
 #include "network.h"
 #include "debug.h"
 #include "util.h"
@@ -743,11 +743,11 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
                   uint32_t version) {
   int rv;
 
-  std::cerr << "init handler" << std::endl;
   remote_addr_.len = salen;
   memcpy(&remote_addr_.su.sa, sa, salen);
 
   switch (remote_addr_.su.storage.ss_family) {
+  case AF_PACKET:
   case AF_INET:
     max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV4;
     break;
@@ -1459,6 +1459,7 @@ int Handler::recv_stream_data(uint64_t stream_id, uint8_t fin,
                               const uint8_t *data, size_t datalen) {
   int rv;
 
+  std::cerr << "init handler" << std::endl;
   if (!config.quiet) {
     debug::print_stream_data(stream_id, data, datalen);
   }
@@ -1492,6 +1493,8 @@ int Handler::recv_stream_data(uint64_t stream_id, uint8_t fin,
 uint64_t Handler::conn_id() const { return conn_id_; }
 
 uint64_t Handler::client_conn_id() const { return client_conn_id_; }
+
+const char* Handler::hostname() const { return SSL_SESSION_get0_hostname(SSL_get_session(ssl_)); }
 
 Server *Handler::server() const { return server_; }
 
@@ -1695,7 +1698,27 @@ int Server::on_read() {
     return 0;
   }
 
-  rv = ngtcp2_pkt_decode_hd(&hd, buf.data(), nread);
+  uint8_t *data = buf.data();
+  ether_header *eh = (ether_header *) data;
+  iphdr *iph = (iphdr *) (data + sizeof(ether_header));
+  udphdr *udph = (udphdr *) (data + sizeof(iphdr) + sizeof(ether_header));
+  uint8_t *quic = data + sizeof(udphdr) + sizeof(iphdr) + sizeof(ether_header);
+  nread -= sizeof(udphdr) + sizeof(iphdr) + sizeof(ether_header);
+
+  int udp_size = ntohs(udph->len) - sizeof(struct udphdr);
+  char sender_ip[INET_ADDRSTRLEN];
+  struct sockaddr_storage client_addr;
+  ((struct sockaddr_in *) &client_addr)->sin_addr.s_addr = iph->saddr;
+  inet_ntop(AF_INET, &((struct sockaddr_in *) &client_addr)->sin_addr, sender_ip, sizeof sender_ip);
+  if (iph->protocol != IPPROTO_UDP) {
+    return 0;
+  }
+  if (udph->dest != htons(config.port)) {
+    return 0;
+  }
+  std::cerr << "Got packet of size: " << udp_size << " from " << sender_ip << std::endl;
+
+  rv = ngtcp2_pkt_decode_hd(&hd, quic, nread);
   if (rv < 0) {
     std::cerr << "Could not decode QUIC packet header: " << ngtcp2_strerror(rv)
               << std::endl;
@@ -1718,7 +1741,7 @@ int Server::on_read() {
         return 0;
       }
 
-      rv = ngtcp2_accept(&hd, buf.data(), nread);
+      rv = ngtcp2_accept(&hd, quic, nread);
       if (rv == -1) {
         if (!config.quiet) {
           std::cerr << "Unexpected packet received" << std::endl;
@@ -1737,9 +1760,10 @@ int Server::on_read() {
       auto h = std::make_unique<Handler>(loop_, ssl_ctx_, this, client_conn_id);
       h->init(fd_, &su.sa, addrlen, hd.version);
 
-      if (h->on_read(buf.data(), nread) != 0) {
+      if (h->on_read(quic, nread) != 0) {
         return 0;
       }
+      std::cerr << "hostname: " << h->hostname() << std::endl;
       rv = h->on_write();
       switch (rv) {
       case 0:
@@ -1782,7 +1806,7 @@ int Server::on_read() {
     return 0;
   }
 
-  rv = h->on_read(buf.data(), nread);
+  rv = h->on_read(quic, nread);
   if (rv != 0) {
     if (rv != NETWORK_ERR_CLOSE_WAIT) {
       remove(handler_it);
@@ -2008,6 +2032,7 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
                               unsigned int context, const unsigned char *in,
                               size_t inlen, X509 *x, size_t chainidx, int *al,
                               void *parse_arg) {
+  std::cerr << "transport parameters parsed" << std::endl;
   if (context != SSL_EXT_CLIENT_HELLO) {
     *al = SSL_AD_ILLEGAL_PARAMETER;
     return -1;
@@ -2120,60 +2145,33 @@ fail:
 
 namespace {
 int create_sock(const char *addr, const char *port, int family) {
-  addrinfo hints{};
-  addrinfo *res, *rp;
-  int rv;
-  int val = 1;
-
-  hints.ai_family = family;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags = AI_PASSIVE;
-
-  if (strcmp("addr", "*") == 0) {
-    addr = nullptr;
+  struct ifaddrs *addrs,*tmp;
+  getifaddrs(&addrs);
+  tmp = addrs;
+  while (tmp) {
+    if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
+      if (strcmp(tmp->ifa_name, "eno1") == 0 ||
+          strcmp(tmp->ifa_name, "ens33") == 0 ||
+          strcmp(tmp->ifa_name, "en0") == 0) {
+        break;
+      }
+    tmp = tmp->ifa_next;
   }
-
-  rv = getaddrinfo(addr, port, &hints, &res);
-  if (rv != 0) {
-    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
-    return -1;
-  }
-
-  auto res_d = defer(freeaddrinfo, res);
+  freeifaddrs(addrs);
 
   int fd = -1;
-
-  for (rp = res; rp; rp = rp->ai_next) {
-    fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    if (fd == -1) {
-      continue;
-    }
-
-    if (rp->ai_family == AF_INET6) {
-      if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val,
-                     static_cast<socklen_t>(sizeof(val))) == -1) {
-        close(fd);
-        continue;
-      }
-    }
-
-    if (bind(fd, rp->ai_addr, rp->ai_addrlen) != -1) {
-      break;
-    }
-
-    close(fd);
-  }
-
-  if (!rp) {
+  if ((fd = socket(PF_PACKET, SOCK_RAW, htons(ETHER_TYPE))) == -1) {
     std::cerr << "Could not bind" << std::endl;
     return -1;
   }
-
+  int val = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
                  static_cast<socklen_t>(sizeof(val))) == -1) {
     return -1;
   }
-
+  if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) == -1) {
+    return -1;
+  }
   return fd;
 }
 

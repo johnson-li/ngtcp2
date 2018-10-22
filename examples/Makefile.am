@@ -36,7 +36,7 @@ LDADD = $(top_builddir)/lib/libngtcp2.la \
 	@OPENSSL_LIBS@ \
 	@LIBEV_LIBS@
 
-noinst_PROGRAMS = client server
+noinst_PROGRAMS = client server balancer
 
 client_SOURCES = client.cc client.h \
 	template.h \
@@ -47,6 +47,15 @@ client_SOURCES = client.cc client.h \
 	crypto.cc
 
 server_SOURCES = server.cc server.h \
+	template.h \
+	debug.cc debug.h \
+	util.cc util.h \
+	shared.h \
+	crypto_openssl.cc \
+	crypto.cc \
+	http.cc http.h
+
+balancer_SOURCES = balancer.cc balancer.h \
 	template.h \
 	debug.cc debug.h \
 	util.cc util.h \

@@ -54,6 +54,7 @@
 #include <ifaddrs.h>
 #include <string.h>
 #include <mysql/mysql.h>
+#include <sstream>
 
 using namespace ngtcp2;
 

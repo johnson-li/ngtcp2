@@ -1777,6 +1777,24 @@ int Server::on_read() {
         return 0;
       }
       std::cerr << "hostname: " << h->hostname() << std::endl;
+      std::ostringstream sql;
+      sql << "select server from intra where domain = '" << h->hostname() << "'";
+      mysql_query(mysql_, sql.str().c_str());
+      MYSQL_RES *result = mysql_store_result(mysql_);
+      std::vector<std::string> servers;
+      MYSQL_ROW row = NULL;
+      row = mysql_fetch_row(result);
+      while (row != NULL) {
+        servers.push_back(row[0]);
+        row = mysql_fetch_row(result);
+      }
+
+      std::cerr << "---servers---" << std::endl;
+      for (std::vector<std::string>::const_iterator i = servers.begin(); i != servers.end(); ++i)
+        std::cerr << *i << ' ';
+      std::cerr << std::endl;
+      mysql_free_result(result);
+
       rv = h->on_write();
       switch (rv) {
       case 0:

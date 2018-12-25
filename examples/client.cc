@@ -1625,7 +1625,7 @@ SSL_CTX *create_ssl_ctx() {
 } // namespace
 
 namespace {
-int create_sock(Address &remote_addr, const char *addr, const char *port) {
+int create_sock(Address &remote_addr, const char *remote_ip, const char *addr, const char *port) {
   addrinfo hints{};
   addrinfo *res, *rp;
   int rv;
@@ -1633,7 +1633,11 @@ int create_sock(Address &remote_addr, const char *addr, const char *port) {
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_DGRAM;
 
-  rv = getaddrinfo(addr, port, &hints, &res);
+  if (remote_ip) {
+    rv = getaddrinfo(remote_ip, port, &hints, &res);
+  } else {
+    rv = getaddrinfo(addr, port, &hints, &res);
+  }
   if (rv != 0) {
     std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
     return -1;
@@ -1679,10 +1683,10 @@ int create_sock(Address &remote_addr, const char *addr, const char *port) {
 } // namespace
 
 namespace {
-int run(Client &c, const char *addr, const char *port) {
+int run(Client &c, const char *remote_ip, const char *addr, const char *port) {
   Address remote_addr;
 
-  auto fd = create_sock(remote_addr, addr, port);
+  auto fd = create_sock(remote_addr, remote_ip, addr, port);
   if (fd == -1) {
     return -1;
   }
@@ -1787,6 +1791,7 @@ Options:
 int main(int argc, char **argv) {
   config_set_default(config);
   char *data_path = nullptr;
+  char *remote_ip = nullptr;
 
   for (;;) {
     static int flag = 0;
@@ -1799,6 +1804,7 @@ int main(int argc, char **argv) {
         {"nstreams", required_argument, nullptr, 'n'},
         {"version", required_argument, nullptr, 'v'},
         {"quiet", no_argument, nullptr, 'q'},
+        {"remote", required_argument, nullptr, 'a'},
         {"ciphers", required_argument, &flag, 1},
         {"groups", required_argument, &flag, 2},
         {"timeout", required_argument, &flag, 3},
@@ -1816,6 +1822,10 @@ int main(int argc, char **argv) {
     case 'd':
       // --data
       data_path = optarg;
+      break;
+    case 'a':
+      // --remote
+      remote_ip = optarg;
       break;
     case 'h':
       // --help
@@ -1926,7 +1936,7 @@ int main(int argc, char **argv) {
 
   Client c(EV_DEFAULT, ssl_ctx);
 
-  if (run(c, addr, port) != 0) {
+  if (run(c, remote_ip, addr, port) != 0) {
     exit(EXIT_FAILURE);
   }
 

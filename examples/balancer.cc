@@ -2175,15 +2175,13 @@ fail:
 } // namespace
 
 namespace {
-int create_sock(const char *addr, const char *port, int family) {
+int create_sock(const char *interface, const char *addr, const char *port, int family) {
   struct ifaddrs *addrs,*tmp;
   getifaddrs(&addrs);
   tmp = addrs;
   while (tmp) {
     if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
-      if (strcmp(tmp->ifa_name, "eno1") == 0 ||
-          strcmp(tmp->ifa_name, "ens33") == 0 ||
-          strcmp(tmp->ifa_name, "en0") == 0) {
+      if (strcmp(tmp->ifa_name, interface) == 0){
         break;
       }
     tmp = tmp->ifa_next;
@@ -2209,8 +2207,8 @@ int create_sock(const char *addr, const char *port, int family) {
 } // namespace
 
 namespace {
-int serve(Server &s, const char *addr, const char *port, int family) {
-  auto fd = create_sock(addr, port, family);
+int serve(const char *interface, Server &s, const char *addr, const char *port, int family) {
+  auto fd = create_sock(interface, addr, port, family);
   if (fd == -1) {
     return -1;
   }
@@ -2371,12 +2369,13 @@ int main(int argc, char **argv) {
     };
   }
 
-  if (argc - optind < 4) {
+  if (argc - optind < 5) {
     std::cerr << "Too few arguments" << std::endl;
     print_usage();
     exit(EXIT_FAILURE);
   }
 
+  auto interface = argv[optind++];
   auto addr = argv[optind++];
   auto port = argv[optind++];
   auto private_key_file = argv[optind++];
@@ -2414,15 +2413,14 @@ int main(int argc, char **argv) {
 
   Server s4(EV_DEFAULT, ssl_ctx);
   if (!util::numeric_host(addr, AF_INET6)) {
-    if (serve(s4, addr, port, AF_INET) == 0) {
+    if (serve(interface, s4, addr, port, AF_INET) == 0) {
       ready = true;
     }
   }
 
-  printf("asdf\n");
   Server s6(EV_DEFAULT, ssl_ctx);
   if (!util::numeric_host(addr, AF_INET)) {
-    if (serve(s6, addr, port, AF_INET6) == 0) {
+    if (serve(interface, s6, addr, port, AF_INET6) == 0) {
       ready = true;
     }
   }

@@ -2419,6 +2419,7 @@ int main(int argc, char **argv) {
     }
   }
 
+  printf("asdf\n");
   Server s6(EV_DEFAULT, ssl_ctx);
   if (!util::numeric_host(addr, AF_INET)) {
     if (serve(s6, addr, port, AF_INET6) == 0) {

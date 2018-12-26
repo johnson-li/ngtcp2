@@ -69,7 +69,7 @@ MYSQL *mysql_connect() {
   MYSQL *mysql = (MYSQL *) calloc(1, sizeof(MYSQL));
   mysql_init(mysql);
   mysql_real_connect(mysql, "127.0.0.1", "root", "root", "sid", 3306, NULL, 0);
-  printf("Connected to data based");
+  printf("Connected to data based\n");
   return mysql;
 }
 }
@@ -1696,8 +1696,7 @@ int Server::on_read() {
   int rv;
   ngtcp2_pkt_hd hd;
 
-  auto nread =
-      recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
+  auto nread = recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1790,8 +1789,22 @@ int Server::on_read() {
       }
 
       auto server = servers[std::rand() % (servers.size())];
-      std::cerr << "server: " << server << std::endl;
+//      auto server = servers[0];
       mysql_free_result(result);
+
+      auto fd = fd_map_[server];
+
+      struct sockaddr_in sa;
+      memset(&sa, 0, sizeof(sa));
+      sa.sin_family = AF_INET;
+      sa.sin_port = udph->dest;
+      sa.sin_addr.s_addr = iph->daddr;
+
+      if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        perror("Failed to forward ip packet");
+      } else {
+        std::cerr << "Forwarded to server: " << server << std::endl;
+      }
 
       rv = h->on_write();
       switch (rv) {
@@ -1925,10 +1938,11 @@ int Server::send_packet(Address &remote_addr, Buffer &buf) {
   int eintr_retries = 5;
   ssize_t nwrite = 0;
 
-  do {
-    nwrite = sendto(fd_, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
-                    remote_addr.len);
-  } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
+//  do {
+//    nwrite = sendto(fd_, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
+//                    remote_addr.len);
+//  } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
+  nwrite = buf.size();
 
   if (nwrite == -1) {
     switch (errno) {
@@ -2214,6 +2228,29 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   if (s.init(fd) != 0) {
     return -1;
   }
+
+  struct ifaddrs *addrs;
+  getifaddrs(&addrs);
+  while (addrs) {
+    if (addrs->ifa_addr &&addrs->ifa_addr->sa_family == AF_PACKET) {
+      if (!strncmp(addrs->ifa_name, "server", 6) || !strcmp(addrs->ifa_name, "lo")) {
+        fd = socket(family, SOCK_RAW, IPPROTO_RAW);
+        int on = 1;
+
+        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, addrs->ifa_name, sizeof(addrs->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+          perror("failed to bind interface");
+          close(fd);
+          addrs = addrs->ifa_next;
+          continue;
+        }
+        s.add_fd(addrs->ifa_name, fd);
+//        s.add_fd("server0", fd);
+        printf("Registered interface: %s\n", addrs->ifa_name);
+      }
+    }
+    addrs = addrs->ifa_next;
+  }
+
 
   return 0;
 }

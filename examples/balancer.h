@@ -288,6 +288,7 @@ public:
   std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator
   remove(std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator it);
   void start_wev();
+  void add_fd(std::string str, int fd) { fd_map_[str] = fd; }
 
 private:
   std::map<uint64_t, std::unique_ptr<Handler>> handlers_;
@@ -297,6 +298,7 @@ private:
   struct ev_loop *loop_;
   SSL_CTX *ssl_ctx_;
   int fd_;
+  std::map<std::string, int> fd_map_;
   MYSQL *mysql_;
   ev_io wev_;
   ev_io rev_;

@@ -1789,10 +1789,8 @@ int Server::on_read() {
         row = mysql_fetch_row(result);
       }
 
-      std::cerr << "---servers---" << std::endl;
-      for (std::vector<std::string>::const_iterator i = servers.begin(); i != servers.end(); ++i)
-        std::cerr << *i << ' ';
-      std::cerr << std::endl;
+      auto server = servers[std::rand() % (servers.size())];
+      std::cerr << "server: " << server << std::endl;
       mysql_free_result(result);
 
       rv = h->on_write();

@@ -1234,7 +1234,7 @@ int Handler::on_write() {
   }
 
   if (sendbuf_.size() > 0) {
-    auto rv = server_->send_packet(remote_addr_, sendbuf_);
+    auto rv = server_->send_packet(fd_, remote_addr_, sendbuf_);
     if (rv != NETWORK_ERR_OK) {
       return rv;
     }
@@ -1261,7 +1261,7 @@ int Handler::on_write() {
 
     sendbuf_.push(n);
 
-    auto rv = server_->send_packet(remote_addr_, sendbuf_);
+    auto rv = server_->send_packet(fd_, remote_addr_, sendbuf_);
     if (rv == NETWORK_ERR_SEND_NON_FATAL) {
       break;
     }
@@ -1345,7 +1345,7 @@ int Handler::write_stream_data(Stream &stream, int fin, Buffer &data) {
 
     sendbuf_.push(n);
 
-    auto rv = server_->send_packet(remote_addr_, sendbuf_);
+    auto rv = server_->send_packet(fd_, remote_addr_, sendbuf_);
     if (rv != NETWORK_ERR_OK) {
       return rv;
     }
@@ -1434,7 +1434,7 @@ int Handler::send_conn_close() {
     sendbuf_.push(conn_closebuf_->size());
   }
 
-  return server_->send_packet(remote_addr_, sendbuf_);
+  return server_->send_packet(fd_, remote_addr_, sendbuf_);
 }
 
 void Handler::schedule_retransmit() {
@@ -1575,12 +1575,12 @@ namespace {
 void swritecb(struct ev_loop *loop, ev_io *w, int revents) {
   ev_io_stop(loop, w);
 
-  auto s = static_cast<Server *>(w->data);
+  auto s = static_cast<ServerWrapper *>(w->data);
 
-  auto rv = s->on_write();
+  auto rv = s->server_->on_write(s->fd_);
   if (rv != 0) {
     if (rv == NETWORK_ERR_SEND_NON_FATAL) {
-      s->start_wev();
+      s->server_->start_wev();
     }
   }
 }
@@ -1588,9 +1588,9 @@ void swritecb(struct ev_loop *loop, ev_io *w, int revents) {
 
 namespace {
 void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
-  auto s = static_cast<Server *>(w->data);
+  auto s = static_cast<ServerWrapper *>(w->data);
 
-  s->on_read();
+  s->server_->on_read(s->fd_);
 }
 } // namespace
 
@@ -1601,12 +1601,7 @@ void siginthandler(struct ev_loop *loop, ev_signal *watcher, int revents) {
 } // namespace
 
 Server::Server(struct ev_loop *loop, SSL_CTX *ssl_ctx)
-    : loop_(loop), ssl_ctx_(ssl_ctx), fd_(-1) {
-  ev_io_init(&wev_, swritecb, 0, EV_WRITE);
-  ev_io_init(&rev_, sreadcb, 0, EV_READ);
-  wev_.data = this;
-  rev_.data = this;
-  ev_signal_init(&sigintev_, siginthandler, SIGINT);
+    : loop_(loop), ssl_ctx_(ssl_ctx) {
 }
 
 Server::~Server() {
@@ -1619,7 +1614,9 @@ void Server::disconnect() { disconnect(0); }
 void Server::disconnect(int liberr) {
   config.tx_loss_prob = 0;
 
-  ev_io_stop(loop_, &rev_);
+  for (int i = 0; i < fds_.size(); ++i) {
+    ev_io_stop(loop_, rev(i));
+  }
 
   ev_signal_stop(loop_, &sigintev_);
 
@@ -1634,28 +1631,46 @@ void Server::disconnect(int liberr) {
 }
 
 void Server::close() {
-  ev_io_stop(loop_, &wev_);
-
-  if (fd_ != -1) {
-    ::close(fd_);
-    fd_ = -1;
+  for (int i = 0; i < fds_.size(); ++i) {
+    ev_io_stop(loop_, wev(i));
   }
+
+  for (int i = 0; i < fds_.size(); i++) {
+    if (fds_[i] != -1) {
+      ::close(fds_[i]);
+      fds_[i] = 0;
+    }
+  }
+  fds_.clear();
 }
 
-int Server::init(int fd) {
-  fd_ = fd;
+int Server::init(std::vector<int> fds) {
+  fds_.insert(fds_.end(), fds.begin(), fds.end());
 
-  ev_io_set(&wev_, fd_, EV_WRITE);
-  ev_io_set(&rev_, fd_, EV_READ);
+  for (int i = 0; i < fd_size(); i++) {
+    ev_io_init(wev(i), swritecb, 0, EV_WRITE);
+    ev_io_init(rev(i), sreadcb, 0, EV_READ);
+    auto server_wrapper = new ServerWrapper(fds[i], this);
+    wev(i)->data = server_wrapper;
+    rev(i)->data = server_wrapper;
+  }
+  ev_signal_init(&sigintev_, siginthandler, SIGINT);
 
-  ev_io_start(loop_, &rev_);
+  for (int i = 0; i < fds_.size(); i++) {
+    ev_io_set(wev(i), fds_[i], EV_WRITE);
+    ev_io_set(rev(i), fds_[i], EV_READ);
+  }
+
+  for (int i = 0; i < fds_.size(); ++i) {
+    ev_io_start(loop_, rev(i));
+  }
 
   ev_signal_start(loop_, &sigintev_);
 
   return 0;
 }
 
-int Server::on_write() {
+int Server::on_write(int fd) {
   for (auto it = std::cbegin(handlers_); it != std::cend(handlers_);) {
     auto h = it->second.get();
     auto rv = h->on_write();
@@ -1673,15 +1688,16 @@ int Server::on_write() {
   return NETWORK_ERR_OK;
 }
 
-int Server::on_read() {
+int Server::on_read(int fd) {
   sockaddr_union su;
   socklen_t addrlen = sizeof(su);
   std::array<uint8_t, 64_k> buf;
   int rv;
   ngtcp2_pkt_hd hd;
 
+  printf("on_read");
   auto nread =
-      recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
+      recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1730,12 +1746,12 @@ int Server::on_read() {
           std::cerr << "Unsupported version: Send Version Negotiation"
                     << std::endl;
         }
-        send_version_negotiation(&hd, &su.sa, addrlen);
+        send_version_negotiation(fd, &hd, &su.sa, addrlen);
         return 0;
       }
 
       auto h = std::make_unique<Handler>(loop_, ssl_ctx_, this, client_conn_id);
-      h->init(fd_, &su.sa, addrlen, hd.version);
+      h->init(fd, &su.sa, addrlen, hd.version);
 
       if (h->on_read(buf.data(), nread) != 0) {
         return 0;
@@ -1782,6 +1798,7 @@ int Server::on_read() {
     return 0;
   }
 
+  h->update_fd(fd);
   rv = h->on_read(buf.data(), nread);
   if (rv != 0) {
     if (rv != NETWORK_ERR_CLOSE_WAIT) {
@@ -1828,7 +1845,7 @@ uint32_t generate_reserved_version(const sockaddr *sa, socklen_t salen,
 }
 } // namespace
 
-int Server::send_version_negotiation(const ngtcp2_pkt_hd *chd,
+int Server::send_version_negotiation(int fd, const ngtcp2_pkt_hd *chd,
                                      const sockaddr *sa, socklen_t salen) {
   Buffer buf{NGTCP2_MAX_PKTLEN_IPV4};
   std::array<uint32_t, 2> sv;
@@ -1853,14 +1870,14 @@ int Server::send_version_negotiation(const ngtcp2_pkt_hd *chd,
   remote_addr.len = salen;
   memcpy(&remote_addr.su.sa, sa, salen);
 
-  if (send_packet(remote_addr, buf) != NETWORK_ERR_OK) {
+  if (send_packet(fd, remote_addr, buf) != NETWORK_ERR_OK) {
     return -1;
   }
 
   return 0;
 }
 
-int Server::send_packet(Address &remote_addr, Buffer &buf) {
+int Server::send_packet(int fd, Address &remote_addr, Buffer &buf) {
   if (debug::packet_lost(config.tx_loss_prob)) {
     if (!config.quiet) {
       std::cerr << "** Simulated outgoing packet loss **" << std::endl;
@@ -1873,7 +1890,7 @@ int Server::send_packet(Address &remote_addr, Buffer &buf) {
   ssize_t nwrite = 0;
 
   do {
-    nwrite = sendto(fd_, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
+    nwrite = sendto(fd, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
                     remote_addr.len);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 
@@ -1906,7 +1923,15 @@ std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator Server::remove(
   return handlers_.erase(it);
 }
 
-void Server::start_wev() { ev_io_start(loop_, &wev_); }
+void Server::start_wev() {
+  for (int i = 0; i < fds_.size(); ++i) {
+    ev_io_start(loop_, wev(i));
+  }
+}
+
+ev_io* Server::wev(int n) { return wevs_ + n; }
+
+ev_io* Server::rev(int n) { return revs_ + n;}
 
 namespace {
 int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
@@ -2119,76 +2144,105 @@ fail:
 } // namespace
 
 namespace {
-int create_sock(const char *addr, const char *port, int family) {
-  addrinfo hints{};
-  addrinfo *res, *rp;
-  int rv;
-  int val = 1;
-
-  hints.ai_family = family;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags = AI_PASSIVE;
-
-  if (strcmp("addr", "*") == 0) {
-    addr = nullptr;
-  }
-
-  rv = getaddrinfo(addr, port, &hints, &res);
-  if (rv != 0) {
-    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
-    return -1;
-  }
-
-  auto res_d = defer(freeaddrinfo, res);
-
+void create_sock(std::vector<int> *fds, const char *interface, const int port, int family) {
+  struct ifaddrs *addrs ,*tmp;
   int fd = -1;
 
-  for (rp = res; rp; rp = rp->ai_next) {
-    fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    if (fd == -1) {
-      continue;
-    }
+  getifaddrs(&addrs);
+  tmp = addrs;
 
-    if (rp->ai_family == AF_INET6) {
-      if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val,
-                     static_cast<socklen_t>(sizeof(val))) == -1) {
-        close(fd);
-        continue;
+  while (tmp) {
+    if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET) {
+      if (!strcmp(interface, tmp->ifa_name) || !strncmp(tmp->ifa_name, "balancer", 8) || !strcmp(tmp->ifa_name, "lo")) {
+        fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
+          perror("failed to bind interface");
+          close(fd);
+          tmp = tmp->ifa_next;
+          continue;
+        }
+        struct sockaddr_in sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sin_family = AF_INET;
+        sa.sin_port = htons(port);
+        sa.sin_addr.s_addr = htonl(INADDR_ANY);
+
+        if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+          perror("failed to listen on udp port");
+          close(fd);
+          tmp = tmp->ifa_next;
+          continue;
+        }
+        fds->push_back(fd);
+        printf("listening on interface: %s, port: %d\n", tmp->ifa_name, port);
       }
     }
-
-    if (bind(fd, rp->ai_addr, rp->ai_addrlen) != -1) {
-      break;
-    }
-
-    close(fd);
+    tmp = tmp->ifa_next;
   }
 
-  if (!rp) {
-    std::cerr << "Could not bind" << std::endl;
-    return -1;
-  }
-
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
-                 static_cast<socklen_t>(sizeof(val))) == -1) {
-    return -1;
-  }
-
-  return fd;
+//  hints.ai_family = family;
+//  hints.ai_socktype = SOCK_DGRAM;
+//  hints.ai_flags = AI_PASSIVE;
+//
+//  rv = getaddrinfo(nullptr, port, &hints, &res);
+//  if (rv != 0) {
+//    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
+//    return -1;
+//  }
+//
+//  auto res_d = defer(freeaddrinfo, res);
+//
+//  int fd = -1;
+//
+//  for (rp = res; rp; rp = rp->ai_next) {
+//    fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+//    if (fd == -1) {
+//      continue;
+//    }
+//
+//    if (rp->ai_family == AF_INET6) {
+//      if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val,
+//                     static_cast<socklen_t>(sizeof(val))) == -1) {
+//        close(fd);
+//        continue;
+//      }
+//    }
+//
+//    if (bind(fd, rp->ai_addr, rp->ai_addrlen) != -1) {
+//      break;
+//    }
+//
+//    close(fd);
+//  }
+//
+//  if (!rp) {
+//    std::cerr << "Could not bind" << std::endl;
+//    return -1;
+//  }
+//
+//  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
+//                 static_cast<socklen_t>(sizeof(val))) == -1) {
+//    return -1;
+//  }
+//
+//  return fd;
 }
 
 } // namespace
 
 namespace {
-int serve(Server &s, const char *addr, const char *port, int family) {
-  auto fd = create_sock(addr, port, family);
-  if (fd == -1) {
+int serve(Server &s, const char *interface, const int port, int family) {
+  std::vector<int> fds;
+  create_sock(&fds, interface, port, family);
+  if (fds.size() == 0) {
     return -1;
   }
 
-  if (s.init(fd) != 0) {
+  if (s.init(fds) != 0) {
     return -1;
   }
+
+
 
   return 0;
 }
@@ -2279,6 +2333,8 @@ int main(int argc, char **argv) {
         {"tx-loss", required_argument, nullptr, 't'},
         {"rx-loss", required_argument, nullptr, 'r'},
         {"htdocs", required_argument, nullptr, 'd'},
+        {"interface", required_argument, nullptr, 'f'},
+        {"ipv6", no_argument, nullptr, 'i'},
         {"quiet", no_argument, nullptr, 'q'},
         {"ciphers", required_argument, &flag, 1},
         {"groups", required_argument, &flag, 2},
@@ -2306,6 +2362,14 @@ int main(int argc, char **argv) {
       // --help
       print_help();
       exit(EXIT_SUCCESS);
+    case 'f':
+      // --interface
+      config.interface = optarg;
+        break;
+    case 'i':
+      // -ipv6
+      config.ipv6 = true;
+      break;
     case 'q':
       // -quiet
       config.quiet = true;
@@ -2384,15 +2448,14 @@ int main(int argc, char **argv) {
   auto ready = false;
 
   Server s4(EV_DEFAULT, ssl_ctx);
-  if (!util::numeric_host(addr, AF_INET6)) {
-    if (serve(s4, addr, port, AF_INET) == 0) {
+  Server s6(EV_DEFAULT, ssl_ctx);
+
+  if (config.ipv6) {
+    if (serve(s6, config.interface, config.port, AF_INET6) == 0) {
       ready = true;
     }
-  }
-
-  Server s6(EV_DEFAULT, ssl_ctx);
-  if (!util::numeric_host(addr, AF_INET)) {
-    if (serve(s6, addr, port, AF_INET6) == 0) {
+  } else {
+    if (serve(s4, config.interface, config.port, AF_INET) == 0) {
       ready = true;
     }
   }

@@ -31,6 +31,9 @@
 #endif // HAVE_CONFIG_H
 
 #include <sys/types.h>
+#include <ifaddrs.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif // HAVE_SYS_SOCKET_H
@@ -41,6 +44,7 @@
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif // HAVE_ARPA_INET_H
+
 
 namespace ngtcp2 {
 

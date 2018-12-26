@@ -65,10 +65,10 @@ constexpr size_t MAX_BYTES_IN_FLIGHT = 1460 * 10;
 } // namespace
 
 namespace {
-MYSQL *mysql_connect() {
+MYSQL *mysql_connect(const char *user, const char *password, const char *mysql_ip) {
   MYSQL *mysql = (MYSQL *) calloc(1, sizeof(MYSQL));
   mysql_init(mysql);
-  mysql_real_connect(mysql, "127.0.0.1", "root", "root", "sid", 3306, NULL, 0);
+  mysql_real_connect(mysql, mysql_ip, user, password, "sid", 3306, NULL, 0);
   printf("Connected to data based\n");
   return mysql;
 }
@@ -1657,9 +1657,9 @@ void Server::close() {
   }
 }
 
-int Server::init(int fd) {
+int Server::init(int fd, const char *user, const char *password, const char *mysql_ip) {
   fd_ = fd;
-  mysql_ = mysql_connect();
+  mysql_ = mysql_connect(user, password, mysql_ip);
 
   ev_io_set(&wev_, fd_, EV_WRITE);
   ev_io_set(&rev_, fd_, EV_READ);
@@ -2219,13 +2219,13 @@ int create_sock(const char *interface, const char *addr, const char *port, int f
 } // namespace
 
 namespace {
-int serve(const char *interface, Server &s, const char *addr, const char *port, int family) {
+int serve(const char *interface, Server &s, const char *addr, const char *port, int family, const char *user, const char *password, const char *mysql_ip) {
   auto fd = create_sock(interface, addr, port, family);
   if (fd == -1) {
     return -1;
   }
 
-  if (s.init(fd) != 0) {
+  if (s.init(fd, user, password, mysql_ip) != 0) {
     return -1;
   }
 
@@ -2341,6 +2341,9 @@ int main(int argc, char **argv) {
         {"tx-loss", required_argument, nullptr, 't'},
         {"rx-loss", required_argument, nullptr, 'r'},
         {"htdocs", required_argument, nullptr, 'd'},
+        {"user", required_argument, nullptr, 'u'},
+        {"password", required_argument, nullptr, 'p'},
+        {"mysql", required_argument, nullptr, 'm'},
         {"quiet", no_argument, nullptr, 'q'},
         {"ciphers", required_argument, &flag, 1},
         {"groups", required_argument, &flag, 2},
@@ -2371,6 +2374,18 @@ int main(int argc, char **argv) {
     case 'q':
       // -quiet
       config.quiet = true;
+      break;
+    case 'u':
+      // --user
+      config.user = optarg;
+      break;
+    case 'p':
+      // --password
+      config.password = optarg;
+      break;
+    case 'm':
+      // --mysql server ip
+      config.mysql_ip = optarg;
       break;
     case 'r':
       // --rx-loss
@@ -2448,14 +2463,14 @@ int main(int argc, char **argv) {
 
   Server s4(EV_DEFAULT, ssl_ctx);
   if (!util::numeric_host(addr, AF_INET6)) {
-    if (serve(interface, s4, addr, port, AF_INET) == 0) {
+    if (serve(interface, s4, addr, port, AF_INET, config.user, config.password, config.mysql_ip) == 0) {
       ready = true;
     }
   }
 
   Server s6(EV_DEFAULT, ssl_ctx);
   if (!util::numeric_host(addr, AF_INET)) {
-    if (serve(interface, s6, addr, port, AF_INET6) == 0) {
+    if (serve(interface, s6, addr, port, AF_INET6, config.user, config.password, config.mysql_ip) == 0) {
       ready = true;
     }
   }

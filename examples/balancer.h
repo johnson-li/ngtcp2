@@ -80,6 +80,9 @@ struct Config {
   bool quiet;
   // timeout is an idle timeout for QUIC connection.
   uint32_t timeout;
+  const char *user = "root";
+  const char *password = "root";
+  const char *mysql_ip = "127.0.0.1";
 };
 
 struct Buffer {
@@ -274,7 +277,7 @@ public:
   Server(struct ev_loop *loop, SSL_CTX *ssl_ctx);
   ~Server();
 
-  int init(int fd);
+  int init(int fd, const char *user, const char *password, const char *mysql_ip);
   void disconnect();
   void disconnect(int liberr);
   void close();

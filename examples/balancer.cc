@@ -2233,7 +2233,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   getifaddrs(&addrs);
   while (addrs) {
     if (addrs->ifa_addr &&addrs->ifa_addr->sa_family == AF_PACKET) {
-      if (!strncmp(addrs->ifa_name, "server", 6) || !strcmp(addrs->ifa_name, "lo")) {
+      if (!strncmp(addrs->ifa_name, "server", 6))) {
         fd = socket(family, SOCK_RAW, IPPROTO_RAW);
         int on = 1;
 

@@ -44,14 +44,7 @@
 #include "crypto.h"
 #include "template.h"
 
-#include <linux/if_packet.h>
-#include <linux/ip.h>
-#include <linux/udp.h>
-#include <net/if.h>
-#include <netinet/ether.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <ifaddrs.h>
 #include <string.h>
 #include <mysql/mysql.h>
 #include <sstream>

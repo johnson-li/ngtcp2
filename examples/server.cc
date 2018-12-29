@@ -2155,7 +2155,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
     if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET) {
       if (!strncmp(tmp->ifa_name, "balancer", 8)) {
         fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
-        if ((errno = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name))) < 0) {
+        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
           std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
           close(fd);
           tmp = tmp->ifa_next;
@@ -2179,53 +2179,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
     }
     tmp = tmp->ifa_next;
   }
-
-//  hints.ai_family = family;
-//  hints.ai_socktype = SOCK_DGRAM;
-//  hints.ai_flags = AI_PASSIVE;
-//
-//  rv = getaddrinfo(nullptr, port, &hints, &res);
-//  if (rv != 0) {
-//    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
-//    return -1;
-//  }
-//
-//  auto res_d = defer(freeaddrinfo, res);
-//
-//  int fd = -1;
-//
-//  for (rp = res; rp; rp = rp->ai_next) {
-//    fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-//    if (fd == -1) {
-//      continue;
-//    }
-//
-//    if (rp->ai_family == AF_INET6) {
-//      if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &val,
-//                     static_cast<socklen_t>(sizeof(val))) == -1) {
-//        close(fd);
-//        continue;
-//      }
-//    }
-//
-//    if (bind(fd, rp->ai_addr, rp->ai_addrlen) != -1) {
-//      break;
-//    }
-//
-//    close(fd);
-//  }
-//
-//  if (!rp) {
-//    std::cerr << "Could not bind" << std::endl;
-//    return -1;
-//  }
-//
-//  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val,
-//                 static_cast<socklen_t>(sizeof(val))) == -1) {
-//    return -1;
-//  }
-//
-//  return fd;
+  freeifaddrs(addrs);
 }
 
 } // namespace

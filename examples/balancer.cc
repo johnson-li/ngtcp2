@@ -2188,18 +2188,6 @@ fail:
 
 namespace {
 int create_sock(const char *interface, const char *addr, const char *port, int family) {
-  struct ifaddrs *addrs,*tmp;
-  getifaddrs(&addrs);
-  tmp = addrs;
-  while (tmp) {
-    if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET)
-      if (strcmp(tmp->ifa_name, interface) == 0){
-        break;
-      }
-    tmp = tmp->ifa_next;
-  }
-  freeifaddrs(addrs);
-
   int fd = -1;
   if ((fd = socket(PF_PACKET, SOCK_RAW, htons(ETHER_TYPE))) == -1) {
     std::cerr << "Could not bind" << std::endl;
@@ -2210,7 +2198,7 @@ int create_sock(const char *interface, const char *addr, const char *port, int f
                  static_cast<socklen_t>(sizeof(val))) == -1) {
     return -1;
   }
-  if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) == -1) {
+  if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, sizeof(interface)) == -1) {
     return -1;
   }
   return fd;
@@ -2229,28 +2217,28 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
     return -1;
   }
 
-  struct ifaddrs *addrs;
+  struct ifaddrs *addrs, *tmp;
   getifaddrs(&addrs);
-  while (addrs) {
-    if (addrs->ifa_addr &&addrs->ifa_addr->sa_family == AF_PACKET) {
-      if (!strncmp(addrs->ifa_name, "server", 6)) {
+  tmp = addrs;
+  while (tmp) {
+    if (tmp->ifa_addr &&tmp->ifa_addr->sa_family == AF_PACKET) {
+      if (!strncmp(tmp->ifa_name, "server", 6)) {
         fd = socket(family, SOCK_RAW, IPPROTO_RAW);
         int on = 1;
 
-        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, addrs->ifa_name, sizeof(addrs->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
           perror("failed to bind interface");
           close(fd);
-          addrs = addrs->ifa_next;
+          tmp = tmp->ifa_next;
           continue;
         }
-        s.add_fd(addrs->ifa_name, fd);
-//        s.add_fd("server0", fd);
-        printf("Registered interface: %s\n", addrs->ifa_name);
+        s.add_fd(tmp->ifa_name, fd);
+        printf("Registered interface: %s\n", tmp->ifa_name);
       }
     }
-    addrs = addrs->ifa_next;
+    tmp = tmp->ifa_next;
   }
-
+  freeifaddrs(addrs);
 
   return 0;
 }

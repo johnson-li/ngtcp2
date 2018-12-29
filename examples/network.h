@@ -34,6 +34,11 @@
 #include <ifaddrs.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
+#include <net/if.h>
+#include <netinet/ether.h>
+#include <linux/if_packet.h>
+#include <linux/ip.h>
+#include <linux/udp.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif // HAVE_SYS_SOCKET_H

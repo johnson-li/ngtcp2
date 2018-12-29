@@ -65,9 +65,19 @@ if(LIBEV_FOUND AND OPENSSL_FOUND AND LIBMYSQLCLIENT_FOUND)
     http.cc
   )
 
+  set(proxy_SOURCES
+          proxy.cc
+          debug.cc
+          util.cc
+          crypto_openssl.cc
+          crypto.cc
+          http.cc
+  )
+
   add_executable(client ${client_SOURCES} $<TARGET_OBJECTS:http-parser>)
   add_executable(server ${server_SOURCES} $<TARGET_OBJECTS:http-parser>)
   add_executable(balancer ${balancer_SOURCES} $<TARGET_OBJECTS:http-parser>)
+  add_executable(proxy ${proxy_SOURCES} $<TARGET_OBJECTS:http-parser>)
   set_target_properties(client PROPERTIES
     COMPILE_FLAGS "${WARNCXXFLAGS}"
     CXX_STANDARD 14
@@ -79,6 +89,11 @@ if(LIBEV_FOUND AND OPENSSL_FOUND AND LIBMYSQLCLIENT_FOUND)
     CXX_STANDARD_REQUIRED ON
   )
   set_target_properties(balaner PROPERTIES
+    COMPILE_FLAGS "${WARNCXXFLAGS}"
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+  )
+  set_target_properties(proxy PROPERTIES
     COMPILE_FLAGS "${WARNCXXFLAGS}"
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON

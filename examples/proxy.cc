@@ -6,11 +6,14 @@
 #include "network.h"
 #include "template.h"
 
+#define FD_SIZE 20
 #define ETHER_TYPE    0x0800
-ev_io revs_[20];
+ev_io revs_[FD_SIZE];
+int fds_[FD_SIZE];
 int read_index = 0;
 ev_signal sigintev_;
 int wfd;
+struct ev_loop *loop_ = EV_DEFAULT;
 
 
 void siginthandler(struct ev_loop *loop, ev_signal *watcher, int revents) {
@@ -20,11 +23,11 @@ void siginthandler(struct ev_loop *loop, ev_signal *watcher, int revents) {
 void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
   ngtcp2::sockaddr_union su;
   socklen_t addrlen = sizeof(su);
-  auto fd = *static_cast<int *>(w->data);
+  int fd = *(int *) (w->data);
   std::array<uint8_t, 64_k> buf;
   auto nread = recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   if (nread == -1) {
-    std::cerr << "recvfrom: " << strerror(errno) << std::endl;
+    std::cerr << "recvfrom " << fd << " : " << strerror(errno) << std::endl;
     return;
   }
   uint8_t *data = buf.data();
@@ -48,35 +51,36 @@ void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
 
 int listen(char *interface, bool listen) {
   int fd = -1;
-  struct ev_loop *loop_ = EV_DEFAULT;
-  if ((fd = socket(PF_PACKET, SOCK_RAW, htons(ETHER_TYPE))) == -1) {
+  if ((fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) == -1) {
     std::cerr << "Could not bind" << std::endl;
     close(fd);
     return -1;
   }
   int val = 1;
-//  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, static_cast<socklen_t>(sizeof(val))) == -1 ||
-//      setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &val, sizeof(val)) == -1) {
-//    std::cerr << "Could not set reuse addr" << std::endl;
-//    close(fd);
-//    return -1;
-//  }
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, sizeof(interface)) == -1) {
     std::cerr << "Failed to bind interface: " << interface << ", " << strerror(errno) << std::endl;
     close(fd);
     return -1;
   }
+  if (!listen) {
+    if (setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &val, sizeof(val)) == -1) {
+      std::cerr << "Failed to set IP_HDRINCL: " << interface << ", " << strerror(errno) << std::endl;
+      close(fd);
+      return -1;
+    }
+  }
   if (listen) {
+    fds_[read_index] = fd;
     ev_io_init(revs_ + read_index, sreadcb, 0, EV_READ);
     ev_signal_init(&sigintev_, siginthandler, SIGINT);
     ev_io_set(revs_ + read_index, fd, EV_READ);
     ev_io_start(loop_, revs_ + read_index);
     ev_signal_start(loop_, &sigintev_);
-    revs_[read_index].data = &fd;
+    revs_[read_index].data = fds_ + read_index;
     read_index++;
-    printf("Listen on interface: %s\n", interface);
+    printf("Listen on interface: %s, %d\n", interface, fd);
   } else {
-    printf("Bind to interface: %s\n", interface);
+    printf("Bind to interface: %s, %d\n", interface, fd);
   }
   return fd;
 }
@@ -104,5 +108,11 @@ int main(int argc, char **argv) {
   }
   freeifaddrs(addrs);
   ev_run(EV_DEFAULT, 0);
+
+  for (auto rev: revs_) {
+    ev_io_stop(loop_, &rev);
+  }
+  ev_signal_stop(loop_, &sigintev_);
+
   return EXIT_SUCCESS;
 }

@@ -2147,14 +2147,13 @@ namespace {
 void create_sock(std::vector<int> *fds, const char *interface, const int port, int family) {
   struct ifaddrs *addrs ,*tmp;
   int fd = -1;
-  int errno;
 
   getifaddrs(&addrs);
   tmp = addrs;
 
   while (tmp) {
     if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET) {
-      if (!strcmp(interface, tmp->ifa_name) || !strncmp(tmp->ifa_name, "balancer", 8)) {
+      if (!strncmp(tmp->ifa_name, "balancer", 8)) {
         fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
         if ((errno = setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name))) < 0) {
           std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;

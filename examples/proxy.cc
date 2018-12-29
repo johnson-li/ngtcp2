@@ -48,7 +48,7 @@ void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
 
 int listen(char *interface, bool listen) {
   int fd = -1;
-  struct ev_loop *loop_;
+  struct ev_loop *loop_ = EV_DEFAULT;
   if ((fd = socket(PF_PACKET, SOCK_RAW, htons(ETHER_TYPE))) == -1) {
     std::cerr << "Could not bind" << std::endl;
     close(fd);

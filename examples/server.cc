@@ -2152,30 +2152,28 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
   tmp = addrs;
 
   while (tmp) {
-    if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET) {
-      if (!strncmp(tmp->ifa_name, "balancer", 8)) {
-        fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
-        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
-          std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
-          close(fd);
-          tmp = tmp->ifa_next;
-          continue;
-        }
-        struct sockaddr_in sa;
-        memset(&sa, 0, sizeof(sa));
-        sa.sin_family = AF_INET;
-        sa.sin_port = htons(port);
-        sa.sin_addr.s_addr = htonl(INADDR_ANY);
-
-        if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-          perror("failed to listen on udp port");
-          close(fd);
-          tmp = tmp->ifa_next;
-          continue;
-        }
-        fds->push_back(fd);
-        printf("listening on interface: %s, port: %d\n", tmp->ifa_name, port);
+    if (!strncmp(tmp->ifa_name, "balancer", 8) || !strcmp(tmp->ifa_name, interface)) {
+      fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
+        std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
+        close(fd);
+        tmp = tmp->ifa_next;
+        continue;
       }
+      struct sockaddr_in sa;
+      memset(&sa, 0, sizeof(sa));
+      sa.sin_family = AF_INET;
+      sa.sin_port = htons(port);
+      sa.sin_addr.s_addr = htonl(INADDR_ANY);
+
+      if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        perror("failed to listen on udp port");
+        close(fd);
+        tmp = tmp->ifa_next;
+        continue;
+      }
+      fds->push_back(fd);
+      printf("listening on interface: %s, port: %d\n", tmp->ifa_name, port);
     }
     tmp = tmp->ifa_next;
   }

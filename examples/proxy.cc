@@ -55,12 +55,12 @@ int listen(char *interface, bool listen) {
     return -1;
   }
   int val = 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, static_cast<socklen_t>(sizeof(val))) == -1 ||
-      setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &val, sizeof(val)) == -1) {
-    std::cerr << "Could not set reuse addr" << std::endl;
-    close(fd);
-    return -1;
-  }
+//  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, static_cast<socklen_t>(sizeof(val))) == -1 ||
+//      setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &val, sizeof(val)) == -1) {
+//    std::cerr << "Could not set reuse addr" << std::endl;
+//    close(fd);
+//    return -1;
+//  }
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, sizeof(interface)) == -1) {
     std::cerr << "Failed to bind interface: " << interface << ", " << strerror(errno) << std::endl;
     close(fd);

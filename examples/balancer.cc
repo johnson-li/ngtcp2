@@ -1788,7 +1788,7 @@ int Server::on_read() {
         row = mysql_fetch_row(result);
       }
 
-      auto server = servers[std::rand() % (servers.size())];
+      auto server = servers[std::rand() % servers.size()];
 //      auto server = servers[0];
       mysql_free_result(result);
 

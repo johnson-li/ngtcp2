@@ -2152,7 +2152,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
   tmp = addrs;
 
   while (tmp) {
-    if (!strncmp(tmp->ifa_name, "balancer", 8) || !strcmp(tmp->ifa_name, interface)) {
+    if (!strncmp(tmp->ifa_name, "bal", 3) || !strcmp(tmp->ifa_name, interface)) {
       fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
       if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
         std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;

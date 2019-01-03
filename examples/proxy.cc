@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
   tmp = addrs;
   while (tmp) {
     if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_PACKET) {
-      if (!strncmp(tmp->ifa_name, "server", 6)) {
+      if (!strncmp(tmp->ifa_name, "ser", 3)) {
         listen(tmp->ifa_name, true);
       }
     }

@@ -2222,7 +2222,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   tmp = addrs;
   while (tmp) {
     if (tmp->ifa_addr &&tmp->ifa_addr->sa_family == AF_PACKET) {
-      if (!strncmp(tmp->ifa_name, "server", 6)) {
+      if (!strncmp(tmp->ifa_name, "ser", 3)) {
         fd = socket(family, SOCK_RAW, IPPROTO_RAW);
         int on = 1;
 

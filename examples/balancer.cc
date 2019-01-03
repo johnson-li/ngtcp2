@@ -1776,34 +1776,86 @@ int Server::on_read() {
         return 0;
       }
       std::cerr << "hostname: " << h->hostname() << std::endl;
-      std::ostringstream sql;
-      sql << "select server from intra where domain = '" << h->hostname() << "'";
-      mysql_query(mysql_, sql.str().c_str());
-      MYSQL_RES *result = mysql_store_result(mysql_);
-      std::vector<std::string> servers;
+
       MYSQL_ROW row = NULL;
+      MYSQL_RES *result, *result2, *result3;
+      std::ostringstream sql;
+
+      // select balancer
+      sql.str("");
+      sql << "select dc, latency from measurements where (dc, client, ts) in (select dc, client , max(ts) from measurements where client = '" << sender_ip << "' group by dc, client)";
+      mysql_query(mysql_, sql.str().c_str());
+      result = mysql_store_result(mysql_);
       row = mysql_fetch_row(result);
+      std::vector<LatencyDC> latencies;
       while (row != NULL) {
-        servers.push_back(row[0]);
+        LatencyDC dc {row[0], atoi(row[1])};
         row = mysql_fetch_row(result);
       }
-
-      auto server = servers[std::rand() % servers.size()];
+      std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
+      sql.str("");
+      sql << "select dc from deployment where domain = '" << h->hostname() << "'";
+      mysql_query(mysql_, sql.str().c_str());
+      result2 = mysql_store_result(mysql_);
+      std::set<std::string> dcs;
+      row = mysql_fetch_row(result2);
+      while (row != NULL) {
+        dcs.insert(row[0]);
+        row = mysql_fetch_row(result2);
+      }
+      bool best_dc = true;
+      for (auto ldc : latencies) {
+        if (ldc.latency <= 0) {
+          continue;
+        }
+        if (dcs.find(ldc.dc) == dcs.end()) {
+          continue;
+        }
+        struct sockaddr_in sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sin_family = AF_INET;
+        sa.sin_port = udph->dest;
+        sa.sin_addr.s_addr = iph->daddr;
+        if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
+          // The current dc is not the best, forward the packet to ldc
+          auto fd = balancer_fd_map_[ldc.dc];
+          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+            perror("Failed to forward ip packet");
+          } else {
+            std::cerr << "Forwarded to balancer: " << ldc.dc << std::endl;
+          }
+        } else {
+          // The current dc is the best, choose server to forward
+          // select server
+          sql.str("");
+          sql << "select server from intra where domain = '" << h->hostname() << "'";
+          mysql_query(mysql_, sql.str().c_str());
+          result = mysql_store_result(mysql_);
+          std::vector<std::string> servers;
+          row = mysql_fetch_row(result);
+          while (row != NULL) {
+            servers.push_back(row[0]);
+            row = mysql_fetch_row(result);
+          }
+          auto server = servers[std::rand() % servers.size()];
 //      auto server = servers[0];
+          mysql_free_result(result);
+
+          auto fd = server_fd_map_[server];
+          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+            perror("Failed to forward ip packet");
+          } else {
+            std::cerr << "Forwarded to server: " << server << std::endl;
+          }
+        }
+        break;
+      }
+
       mysql_free_result(result);
+      mysql_free_result(result2);
 
-      auto fd = fd_map_[server];
+      if (best_dc) {
 
-      struct sockaddr_in sa;
-      memset(&sa, 0, sizeof(sa));
-      sa.sin_family = AF_INET;
-      sa.sin_port = udph->dest;
-      sa.sin_addr.s_addr = iph->daddr;
-
-      if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        perror("Failed to forward ip packet");
-      } else {
-        std::cerr << "Forwarded to server: " << server << std::endl;
       }
 
       rv = h->on_write();
@@ -2233,7 +2285,19 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
           continue;
         }
         s.add_fd(tmp->ifa_name, fd);
-        printf("Registered interface: %s\n", tmp->ifa_name);
+        printf("Registered interface: %s as server\n", tmp->ifa_name);
+      } else if (strncmp(tmp->ifa_name, "bal", 3)) {
+        fd = socket(family, SOCK_RAW, IPPROTO_RAW);
+        int on = 1;
+
+        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+          perror("failed to bind interface");
+          close(fd);
+          tmp = tmp->ifa_next;
+          continue;
+        }
+        s.add_balancer_fd(tmp->ifa_name, fd);
+        printf("Registered interface: %s as balancer\n", tmp->ifa_name);
       }
     }
     tmp = tmp->ifa_next;

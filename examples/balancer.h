@@ -48,6 +48,7 @@
 #include <string.h>
 #include <mysql/mysql.h>
 #include <sstream>
+#include <set>
 
 using namespace ngtcp2;
 
@@ -76,6 +77,7 @@ struct Config {
   const char *user = "root";
   const char *password = "root";
   const char *mysql_ip = "127.0.0.1";
+  const char *datacenter = "test";
 };
 
 struct Buffer {
@@ -104,6 +106,19 @@ struct Buffer {
   // tail points to the position of the buffer where write should
   // occur.
   uint8_t *tail;
+};
+
+struct LatencyDC {
+    std::string dc;
+    int latency;
+
+    LatencyDC(std::string d, int l) : dc(d), latency(l) {}
+};
+
+struct LatencyDCCmp {
+    inline bool operator () (const LatencyDC& l1, const LatencyDC& l2) {
+      return (l1.latency < l2.latency);
+    }
 };
 
 enum {
@@ -284,7 +299,8 @@ public:
   std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator
   remove(std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator it);
   void start_wev();
-  void add_fd(std::string str, int fd) { fd_map_[str] = fd; }
+  void add_fd(std::string str, int fd) { server_fd_map_[str] = fd; }
+  void add_balancer_fd(std::string str, int fd) { balancer_fd_map_[str] = fd; }
 
 private:
   std::map<uint64_t, std::unique_ptr<Handler>> handlers_;
@@ -294,7 +310,8 @@ private:
   struct ev_loop *loop_;
   SSL_CTX *ssl_ctx_;
   int fd_;
-  std::map<std::string, int> fd_map_;
+  std::map<std::string, int> server_fd_map_;
+  std::map<std::string, int> balancer_fd_map_;
   MYSQL *mysql_;
   ev_io wev_;
   ev_io rev_;

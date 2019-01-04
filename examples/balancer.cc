@@ -2282,7 +2282,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
         }
         s.add_fd(tmp->ifa_name, fd);
         printf("Registered interface: %s as server\n", tmp->ifa_name);
-      } else if (strncmp(tmp->ifa_name, "bal", 3)) {
+      } else if (!strncmp(tmp->ifa_name, "bal", 3)) {
         fd = socket(family, SOCK_RAW, IPPROTO_RAW);
         int on = 1;
 

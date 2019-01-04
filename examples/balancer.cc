@@ -2255,6 +2255,7 @@ int create_sock(const char *interface, const char *addr, const char *port, int f
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, sizeof(interface)) == -1) {
     return -1;
   }
+  std::cerr << "listening on " << interface << std::endl;
   return fd;
 }
 

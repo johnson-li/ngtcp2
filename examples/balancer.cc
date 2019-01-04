@@ -1807,7 +1807,7 @@ int Server::on_read(int fd, bool forwarded) {
         dcs.insert(row[0]);
         row = mysql_fetch_row(result2);
       }
-      bool best_dc = true;
+      bool forwarded = false;
       for (auto ldc : latencies) {
         if (ldc.latency <= 0) {
           continue;
@@ -1823,6 +1823,7 @@ int Server::on_read(int fd, bool forwarded) {
         if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
           // The current dc is not the best, forward the packet to ldc
           auto fd = balancer_fd_map_[ldc.dc];
+          forwarded = true;
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
@@ -1846,6 +1847,7 @@ int Server::on_read(int fd, bool forwarded) {
           mysql_free_result(result);
 
           auto fd = server_fd_map_[server];
+          forwarded = true;
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
@@ -1855,12 +1857,12 @@ int Server::on_read(int fd, bool forwarded) {
         break;
       }
 
+      if (!forwarded) {
+        std::cerr << "Failed to find server/balancer to forward" << std::endl;
+      }
+
       mysql_free_result(result);
       mysql_free_result(result2);
-
-      if (best_dc) {
-
-      }
 
       rv = h->on_write();
       switch (rv) {

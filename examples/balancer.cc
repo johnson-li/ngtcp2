@@ -2275,7 +2275,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
         int on = 1;
 
         if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
-          perror("failed to bind interface");
+          std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
           close(fd);
           tmp = tmp->ifa_next;
           continue;
@@ -2287,7 +2287,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
         int on = 1;
 
         if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
-          perror("failed to bind interface");
+          std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
           close(fd);
           tmp = tmp->ifa_next;
           continue;

@@ -2272,32 +2272,30 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   getifaddrs(&addrs);
   tmp = addrs;
   while (tmp) {
-    if (tmp->ifa_addr &&tmp->ifa_addr->sa_family == AF_PACKET) {
-      if (!strncmp(tmp->ifa_name, "ser", 3)) {
-        fd = socket(family, SOCK_RAW, IPPROTO_RAW);
-        int on = 1;
+    if (!strncmp(tmp->ifa_name, "ser", 3)) {
+      fd = socket(family, SOCK_RAW, IPPROTO_RAW);
+      int on = 1;
 
-        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
-          std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
-          close(fd);
-          tmp = tmp->ifa_next;
-          continue;
-        }
-        s.add_fd(tmp->ifa_name, fd);
-        printf("Registered interface: %s as server\n", tmp->ifa_name);
-      } else if (!strncmp(tmp->ifa_name, "bal", 3)) {
-        fd = socket(family, SOCK_RAW, IPPROTO_RAW);
-        int on = 1;
-
-        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
-          std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
-          close(fd);
-          tmp = tmp->ifa_next;
-          continue;
-        }
-        s.add_balancer_fd(tmp->ifa_name, fd);
-        printf("Registered interface: %s as balancer\n", tmp->ifa_name);
+      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+        std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
+        close(fd);
+        tmp = tmp->ifa_next;
+        continue;
       }
+      s.add_fd(tmp->ifa_name, fd);
+      printf("Registered interface: %s as server\n", tmp->ifa_name);
+    } else if (!strncmp(tmp->ifa_name, "bal", 3)) {
+      fd = socket(family, SOCK_RAW, IPPROTO_RAW);
+      int on = 1;
+
+      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+        std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
+        close(fd);
+        tmp = tmp->ifa_next;
+        continue;
+      }
+      s.add_balancer_fd(tmp->ifa_name, fd);
+      printf("Registered interface: %s as balancer\n", tmp->ifa_name);
     }
     tmp = tmp->ifa_next;
   }

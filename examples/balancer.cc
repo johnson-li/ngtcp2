@@ -1604,8 +1604,12 @@ void swritecb(struct ev_loop *loop, ev_io *w, int revents) {
 namespace {
 void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
   auto s = static_cast<Server *>(w->data);
+  s->on_read(s->fd(), false);
+}
 
-  s->on_read();
+void freadcb(struct ev_loop *loop, ev_io *w, int revents) {
+  auto s = static_cast<ServerWrapper *>(w->data);
+  s->server_->on_read(s->fd_, true);
 }
 } // namespace
 
@@ -1689,14 +1693,14 @@ int Server::on_write() {
   return NETWORK_ERR_OK;
 }
 
-int Server::on_read() {
+int Server::on_read(int fd, bool forwarded) {
   sockaddr_union su;
   socklen_t addrlen = sizeof(su);
   std::array<uint8_t, 64_k> buf;
   int rv;
   ngtcp2_pkt_hd hd;
 
-  auto nread = recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
+  auto nread = recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1990,10 +1994,6 @@ int Server::send_packet(Address &remote_addr, Buffer &buf) {
   int eintr_retries = 5;
   ssize_t nwrite = 0;
 
-//  do {
-//    nwrite = sendto(fd_, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
-//                    remote_addr.len);
-//  } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
   nwrite = buf.size();
 
   if (nwrite == -1) {
@@ -2265,10 +2265,6 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
     return -1;
   }
 
-  if (s.init(fd, user, password, mysql_ip) != 0) {
-    return -1;
-  }
-
   struct ifaddrs *addrs, *tmp;
   getifaddrs(&addrs);
   tmp = addrs;
@@ -2302,7 +2298,22 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
     }
     tmp = tmp->ifa_next;
   }
+
+  for (auto const& item : s.balancer_fd_map_) {
+    auto rev = s.balancer_rev_map_[item.first];
+    ev_io_init(rev, freadcb, 0, EV_READ);
+    auto server_wrapper = new ServerWrapper(item.second, &s);
+    rev->data = server_wrapper;
+    ev_io_set(rev, item.second, EV_READ);
+    ev_io_start(s.loop_, rev);
+  }
+
   freeifaddrs(addrs);
+
+  if (s.init(fd, user, password, mysql_ip) != 0) {
+    return -1;
+  }
+
 
   return 0;
 }
@@ -2395,6 +2406,7 @@ int main(int argc, char **argv) {
         {"htdocs", required_argument, nullptr, 'd'},
         {"user", required_argument, nullptr, 'u'},
         {"password", required_argument, nullptr, 'p'},
+        {"datacenter", required_argument, nullptr, 'i'},
         {"mysql", required_argument, nullptr, 'm'},
         {"quiet", no_argument, nullptr, 'q'},
         {"ciphers", required_argument, &flag, 1},
@@ -2434,6 +2446,10 @@ int main(int argc, char **argv) {
     case 'p':
       // --password
       config.password = optarg;
+      break;
+    case 'i':
+      // --datacenter name
+      config.datacenter = optarg;
       break;
     case 'm':
       // --mysql server ip

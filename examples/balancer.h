@@ -291,7 +291,7 @@ public:
   void close();
 
   int on_write();
-  int on_read();
+  int on_read(int fd, bool forwarded);
   int send_version_negotiation(const ngtcp2_pkt_hd *hd, const sockaddr *sa,
                                socklen_t salen);
   int send_packet(Address &remote_addr, Buffer &buf);
@@ -300,22 +300,39 @@ public:
   remove(std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator it);
   void start_wev();
   void add_fd(std::string str, int fd) { server_fd_map_[str] = fd; }
-  void add_balancer_fd(std::string str, int fd) { balancer_fd_map_[str] = fd; }
+  void add_balancer_fd(std::string str, int fd) { balancer_fd_map_[str] = fd; balancer_rev_map_[str] = new ev_io(); }
+  int fd() { return fd_; }
+
+  std::map<std::string, int> balancer_fd_map_;
+  std::map<std::string, ev_io*> balancer_rev_map_;
+  struct ev_loop *loop_;
 
 private:
   std::map<uint64_t, std::unique_ptr<Handler>> handlers_;
   // ctos_ is a mapping between client's initial connection ID, and
   // server chosen connection ID.
   std::map<uint64_t, uint64_t> ctos_;
-  struct ev_loop *loop_;
   SSL_CTX *ssl_ctx_;
   int fd_;
+  std::vector<int> fds_;
   std::map<std::string, int> server_fd_map_;
-  std::map<std::string, int> balancer_fd_map_;
   MYSQL *mysql_;
   ev_io wev_;
   ev_io rev_;
   ev_signal sigintev_;
+};
+
+class ServerWrapper {
+public:
+    ServerWrapper(int fd, Server *server) {
+      fd_ = fd;
+      server_ = server;
+    }
+
+    ~ServerWrapper();
+
+    int fd_;
+    Server *server_;
 };
 
 #endif // SERVER_H

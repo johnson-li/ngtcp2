@@ -1794,11 +1794,12 @@ int Server::on_read(int fd, bool forwarded) {
       std::vector<LatencyDC> latencies;
       while (row != NULL) {
         LatencyDC dc {row[0], atoi(row[1])};
+        latencies.push_back(dc);
         row = mysql_fetch_row(result);
       }
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
       sql.str("");
-      sql << "select dc from deployment where domain = '" << h->hostname() << "'";
+      sql << "select datacenter from deployment where domain = '" << h->hostname() << "'";
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
       std::set<std::string> dcs;
@@ -1833,7 +1834,7 @@ int Server::on_read(int fd, bool forwarded) {
           // The current dc is the best, choose server to forward
           // select server
           sql.str("");
-          sql << "select server from intra where domain = '" << h->hostname() << "'";
+          sql << "select server from intra where domain = '" << h->hostname() << "' and datacenter = '" << ldc.dc.c_str() << "'";
           mysql_query(mysql_, sql.str().c_str());
           result = mysql_store_result(mysql_);
           std::vector<std::string> servers;
@@ -1861,7 +1862,7 @@ int Server::on_read(int fd, bool forwarded) {
         std::cerr << "Failed to find server/balancer to forward" << std::endl;
       }
 
-      mysql_free_result(result);
+      //mysql_free_result(result);
       mysql_free_result(result2);
 
       rv = h->on_write();
@@ -2268,10 +2269,15 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
     return -1;
   }
 
+  if (s.init(fd, user, password, mysql_ip) != 0) {
+    return -1;
+  }
+
   struct ifaddrs *addrs, *tmp;
   getifaddrs(&addrs);
   tmp = addrs;
   while (tmp) {
+    printf("ifa_name: %s\n", tmp->ifa_name);
     if (!strncmp(tmp->ifa_name, "ser", 3)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
@@ -2283,7 +2289,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
         continue;
       }
       s.add_fd(tmp->ifa_name, fd);
-      printf("Registered interface: %s as server\n", tmp->ifa_name);
+      printf("Registered interface: %s as server, %d\n", tmp->ifa_name, fd);
     } else if (!strncmp(tmp->ifa_name, "bal", 3)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
@@ -2295,7 +2301,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
         continue;
       }
       s.add_balancer_fd(tmp->ifa_name, fd);
-      printf("Registered interface: %s as balancer\n", tmp->ifa_name);
+      printf("Registered interface: %s as balancer, %d\n", tmp->ifa_name, fd);
     }
     tmp = tmp->ifa_next;
   }
@@ -2310,10 +2316,6 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   }
 
   freeifaddrs(addrs);
-
-  if (s.init(fd, user, password, mysql_ip) != 0) {
-    return -1;
-  }
 
 
   return 0;

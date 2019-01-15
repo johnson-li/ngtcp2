@@ -2275,8 +2275,11 @@ char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
                 s, maxlen);
       break;
 
+    case AF_PACKET:
+      sprintf(s, sizeof(s), "AF_PACKET");
+      break;
     default:
-      strncpy(s, "Unknown AF", maxlen);
+      sprintf(s, sizeof(s), "Unknown AF: %ud", sa->sa_family);
       return NULL;
   }
 

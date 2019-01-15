@@ -2305,6 +2305,10 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
     get_ip_str(tmp->ifa_addr, address, 1024);
     printf("ifa_name: %s, %s\n", tmp->ifa_name, address);
     delete(address);
+    if (tmp->ifa_addr->sa_family != AF_INET) {
+      tmp = tmp->ifa_next;
+      continue;
+    }
     if (!strncmp(tmp->ifa_name, "sv", 2)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;

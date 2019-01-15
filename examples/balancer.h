@@ -299,7 +299,7 @@ public:
   std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator
   remove(std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator it);
   void start_wev();
-  void add_fd(std::string str, int fd) { server_fd_map_[str] = fd; printf("add fd %s %d\n", str.c_str(), fd); }
+  void add_fd(std::string str, int fd) { server_fd_map_[str] = fd; }
   void add_balancer_fd(std::string str, int fd) { balancer_fd_map_[str] = fd; balancer_rev_map_[str] = new ev_io(); }
   int fd() { return fd_; }
 

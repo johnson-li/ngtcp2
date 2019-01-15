@@ -2298,7 +2298,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   getifaddrs(&addrs);
   tmp = addrs;
   while (tmp) {
-    char* address = calloc(1024, sizeof(char));
+    char* address = (char *)calloc(1024, sizeof(char));
     get_ip_str(tmp->ifa_addr, address, 1024);
     printf("ifa_name: %s, %s\n", tmp->ifa_name, address);
     delete(address);

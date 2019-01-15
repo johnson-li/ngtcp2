@@ -2276,10 +2276,10 @@ char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
       break;
 
     case AF_PACKET:
-      sprintf(s, sizeof(s), "AF_PACKET");
+      sprintf(s, "AF_PACKET");
       break;
     default:
-      sprintf(s, sizeof(s), "Unknown AF: %ud", sa->sa_family);
+      sprintf(s, "Unknown AF: %ud", sa->sa_family);
       return NULL;
   }
 

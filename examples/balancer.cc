@@ -2262,6 +2262,27 @@ int create_sock(const char *interface, const char *addr, const char *port, int f
 
 } // namespace
 
+char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
+{
+  switch(sa->sa_family) {
+    case AF_INET:
+      inet_ntop(AF_INET, &(((struct sockaddr_in *)sa)->sin_addr),
+                s, maxlen);
+      break;
+
+    case AF_INET6:
+      inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)sa)->sin6_addr),
+                s, maxlen);
+      break;
+
+    default:
+      strncpy(s, "Unknown AF", maxlen);
+      return NULL;
+  }
+
+  return s;
+}
+
 namespace {
 int serve(const char *interface, Server &s, const char *addr, const char *port, int family, const char *user, const char *password, const char *mysql_ip) {
   auto fd = create_sock(interface, addr, port, family);
@@ -2277,8 +2298,11 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
   getifaddrs(&addrs);
   tmp = addrs;
   while (tmp) {
-    printf("ifa_name: %s\n", tmp->ifa_name);
-    if (!strncmp(tmp->ifa_name, "ser", 3)) {
+    char* address = calloc(1024, sizeof(char));
+    get_ip_str(tmp->ifa_addr, address, 1024);
+    printf("ifa_name: %s, %s\n", tmp->ifa_name, address);
+    delete(address);
+    if (!strncmp(tmp->ifa_name, "sv", 2)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
 
@@ -2290,7 +2314,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
       }
       s.add_fd(tmp->ifa_name, fd);
       printf("Registered interface: %s as server, %d\n", tmp->ifa_name, fd);
-    } else if (!strncmp(tmp->ifa_name, "bal", 3)) {
+    } else if (!strncmp(tmp->ifa_name, "bl", 2)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
 

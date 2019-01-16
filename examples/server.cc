@@ -56,6 +56,7 @@ auto randgen = util::make_mt19937();
 
 namespace {
 Config config{};
+set<std::string> balancer_interfaces;
 } // namespace
 
 namespace {
@@ -1688,6 +1689,29 @@ int Server::on_write(int fd) {
   return NETWORK_ERR_OK;
 }
 
+namespace {
+void arp_add(sockaddr* sa) {
+  for (auto interface: balancer_interfaces) {
+    struct arpreq req;
+    struct sockaddr_in *sin;
+    bzero(&req, sizeof(req));
+    strcpy(req.arp_dev, interface.c_str());
+    req.arp_pa = *sa;
+    req.arp_flags = ATF_PERM | ATF_COM;
+    int s;
+    if((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0){
+      perror("socket() failed.");
+      continue;
+    }
+    if (ioctl(s, SIOCSARP, (caddr_t)&req) <0) {
+      std::cerr << "Fail to set arp entry " << inet_ntoa(((sockaddr_in*)sa)->sin_addr) << " dev " << interface << ", " << strerror(errno) << std::endl;
+    } else {
+      std::cerr << "Succeed to set arp entry " << inet_ntoa(((sockaddr_in*)sa)->sin_addr) << " dev " << interface << std::endl;
+    }
+    close(s);
+  }
+}}
+
 int Server::on_read(int fd) {
   sockaddr_union su;
   socklen_t addrlen = sizeof(su);
@@ -1703,6 +1727,9 @@ int Server::on_read(int fd) {
     // TODO Handle running out of fd
     return 0;
   }
+
+  // filling arp entry
+  arp_add(&(su.sa))
 
   if (debug::packet_lost(config.rx_loss_prob)) {
     if (!config.quiet) {
@@ -2143,6 +2170,7 @@ fail:
 }
 } // namespace
 
+
 namespace {
 void create_sock(std::vector<int> *fds, const char *interface, const int port, int family) {
   struct ifaddrs *addrs ,*tmp;
@@ -2157,6 +2185,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       continue;
     }
     if (!strncmp(tmp->ifa_name, "bl", 2) || !strcmp(tmp->ifa_name, interface)) {
+      balancer_interfaces.insert(std::string(tmp->ifa_name));
       fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
       if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
         std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;

@@ -33,6 +33,7 @@
 #include <deque>
 #include <map>
 #include <string>
+#include <linux/if_arp.h>
 
 #include <ngtcp2/ngtcp2.h>
 

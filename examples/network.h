@@ -30,10 +30,10 @@
 #include <config.h>
 #endif // HAVE_CONFIG_H
 
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <ifaddrs.h>
 #include <sys/ioctl.h>
-#include <net/if.h>
 #include <net/if.h>
 #include <netinet/ether.h>
 #include <linux/if_packet.h>

@@ -1729,7 +1729,7 @@ int Server::on_read(int fd) {
   }
 
   // filling arp entry
-  arp_add(&(su.sa))
+  arp_add(&(su.sa));
 
   if (debug::packet_lost(config.rx_loss_prob)) {
     if (!config.quiet) {

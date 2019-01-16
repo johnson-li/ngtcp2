@@ -34,7 +34,7 @@
 #include <map>
 #include <set>
 #include <string>
-#include <linux/if_arp.h>
+#include <net/if_arp.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 

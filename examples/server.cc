@@ -56,7 +56,7 @@ auto randgen = util::make_mt19937();
 
 namespace {
 Config config{};
-set<std::string> balancer_interfaces;
+std::set<std::string> balancer_interfaces;
 } // namespace
 
 namespace {

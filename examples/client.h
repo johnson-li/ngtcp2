@@ -192,7 +192,6 @@ public:
   void make_stream_early();
   void handle_early_data();
   virtual int OnMigration(uint32_t peer_address);
-  Address remote_addr_;
 
 private:
   Address remote_addr_;

@@ -707,10 +707,10 @@ int Client::OnMigration(uint32_t peer_address) {
 
   remote_addr_.su.in = remote_addr;
   remote_addr_.len = sizeof(remote_addr);
-//  if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
-//    std::cerr << "connect: " << strerror(errno) << std::endl;
-//    return -1;
-//  }
+  if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
+    std::cerr << "connect: " << strerror(errno) << std::endl;
+    return -1;
+  }
   char ip_str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(server_addr), ip_str, INET_ADDRSTRLEN);
   std::cerr << "migrate server's address to " << ip_str << std::endl;

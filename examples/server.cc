@@ -743,6 +743,8 @@ int stream_close(ngtcp2_conn *conn, uint64_t stream_id, uint16_t app_error_code,
 uint32_t parseIPV4string(const char *ipAddress) {
   uint32_t ip_bytes[4];
   sscanf(ipAddress, "%uhh.%uhh.%uhh.%uhh", &ip_bytes[3], &ip_bytes[2], &ip_bytes[1], &ip_bytes[0]);
+//  struct sockaddr_in sa;
+//  inet_pton(AF_INET, ipAddress, &(sa.sin_addr));
   return ip_bytes[0] | ip_bytes[1] << 8 | ip_bytes[2] << 16 | ip_bytes[3] << 24;
 }
 

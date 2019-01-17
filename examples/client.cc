@@ -614,6 +614,8 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
+  settings.server_unicast_ip = 0;
+  settings.server_unicast_ttl = 0;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   rv = ngtcp2_conn_client_new(&conn_, conn_id, version, &callbacks, &settings,
@@ -693,6 +695,26 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   ev_signal_start(loop_, &sigintev_);
 
   return 0;
+}
+
+int Client::OnMigration(uint32_t peer_address) {
+  sockaddr_in remote_addr;
+  in_addr server_addr;
+  server_addr.s_addr = peer_address;
+  remote_addr.sin_family = AF_INET;
+  remote_addr.sin_port = remote_addr_.su.in.sin_port;
+  remote_addr.sin_addr = server_addr;
+
+  remote_addr_.su.in = remote_addr;
+  remote_addr_.len = sizeof(remote_addr);
+//  if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
+//    std::cerr << "connect: " << strerror(errno) << std::endl;
+//    return -1;
+//  }
+  char ip_str[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &(server_addr), ip_str, INET_ADDRSTRLEN);
+  std::cerr << "migrate server's address to " << ip_str << std::endl;
+  return 1;
 }
 
 int Client::tls_handshake(bool initial) {

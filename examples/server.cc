@@ -740,6 +740,12 @@ int stream_close(ngtcp2_conn *conn, uint64_t stream_id, uint16_t app_error_code,
 }
 } // namespace
 
+uint32_t parseIPV4string(char* ipAddress) {
+  char ip_bytes[4];
+  sscanf(ipAddress, "%uhh.%uhh.%uhh.%uhh", &ip_bytes[3], &ip_bytes[2], &ip_bytes[1], &ip_bytes[0]);
+  return ip_bytes[0] | ip_bytes[1] << 8 | ip_bytes[2] << 16 | ip_bytes[3] << 24;
+}
+
 int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
                   uint32_t version) {
   int rv;
@@ -797,6 +803,8 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
+  settings.server_unicast_ip = parseIPV4string(config.unicast_ip);
+  settings.server_unicast_ttl = 1000;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
@@ -2319,6 +2327,7 @@ int main(int argc, char **argv) {
         {"rx-loss", required_argument, nullptr, 'r'},
         {"htdocs", required_argument, nullptr, 'd'},
         {"interface", required_argument, nullptr, 'f'},
+        {"unicast", required_argument, nullptr, 'u'},
         {"ipv6", no_argument, nullptr, 'i'},
         {"quiet", no_argument, nullptr, 'q'},
         {"ciphers", required_argument, &flag, 1},
@@ -2351,6 +2360,9 @@ int main(int argc, char **argv) {
       // --interface
       config.interface = optarg;
         break;
+    case 'u':
+      // --unicast
+      config.unicast_ip = optarg;
     case 'i':
       // -ipv6
       config.ipv6 = true;

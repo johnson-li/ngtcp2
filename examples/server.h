@@ -72,6 +72,7 @@ struct Config {
     uint32_t timeout;
     bool ipv6;
     const char *interface = "eth0";
+    const char *unicast_ip = "127.0.0.1";
 };
 
 struct Buffer {

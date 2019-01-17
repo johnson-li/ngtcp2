@@ -4001,6 +4001,8 @@ settings_copy_from_transport_params(ngtcp2_settings *dest,
   dest->max_packet_size = src->max_packet_size;
   memcpy(dest->stateless_reset_token, src->stateless_reset_token,
          sizeof(dest->stateless_reset_token));
+  dest->server_unicast_ip = src->server_unicast_ip;
+  dest->server_unicast_ttl = src->server_unicast_ttl;
   dest->ack_delay_exponent = src->ack_delay_exponent;
 }
 
@@ -4015,6 +4017,8 @@ static void transport_params_copy_from_settings(ngtcp2_transport_params *dest,
   dest->max_packet_size = src->max_packet_size;
   memcpy(dest->stateless_reset_token, src->stateless_reset_token,
          sizeof(dest->stateless_reset_token));
+  dest->server_unicast_ip = src->server_unicast_ip;
+  dest->server_unicast_ttl = src->server_unicast_ttl;
   dest->ack_delay_exponent = src->ack_delay_exponent;
 }
 

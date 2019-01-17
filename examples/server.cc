@@ -2210,7 +2210,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
       if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << sa.sin_port << ", " << strerror(errno) << std::endl;
+        std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << ntohl(sa.sin_port) << ", " << strerror(errno) << std::endl;
         close(fd);
         tmp = tmp->ifa_next;
         continue;

@@ -2418,7 +2418,7 @@ int main(int argc, char **argv) {
 
   errno = 0;
   config.port = strtoul(port, nullptr, 10);
-  if (errno != 0 || errno > 30000) {
+  if (errno != 0 || config.port > 30000 || config.port <= 0) {
     std::cerr << "port: invalid port number" << std::endl;
     exit(EXIT_FAILURE);
   }

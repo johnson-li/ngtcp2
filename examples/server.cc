@@ -2184,7 +2184,7 @@ fail:
 
 
 namespace {
-void create_sock(std::vector<int> *fds, const char *interface, const int port, int family, Server *s) {
+void create_sock(std::vector<int> *fds, const char *interface, const int port, int family, Server &s) {
   struct ifaddrs *addrs ,*tmp;
   int fd = -1;
 
@@ -2220,8 +2220,8 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
         continue;
       }
       fds->push_back(fd);
-      if (!strcmp(tmp->ifa_name, interface) {
-        s->unicast_fd(fd);
+      if (!strcmp(tmp->ifa_name, interface)) {
+        s.unicast_fd(fd);
       }
       printf("listening on interface: %s, port: %d\n", tmp->ifa_name, port);
     }

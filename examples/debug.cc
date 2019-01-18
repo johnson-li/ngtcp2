@@ -486,6 +486,10 @@ void print_transport_params(const ngtcp2_transport_params *params, int type) {
   fprintf(outfile, "; omit_connection_id=%u\n", params->omit_connection_id);
   print_indent();
   fprintf(outfile, "; max_packet_size=%u\n", params->max_packet_size);
+  print_indent();
+  fprintf(outfile, "; server_unicast_ip=%u\n", params->server_unicast_ip);
+  print_indent();
+  fprintf(outfile, "; server_unicast_ttl=%u\n", params->server_unicast_ttl);
 
   switch (type) {
   case NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS:

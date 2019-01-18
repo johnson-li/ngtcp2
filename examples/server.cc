@@ -2464,7 +2464,7 @@ int main(int argc, char **argv) {
 
   ev_run(EV_DEFAULT, 0);
 
-  close(s6);
+  //close(s6);
   close(s4);
 
   return EXIT_SUCCESS;

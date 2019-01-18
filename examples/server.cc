@@ -1739,7 +1739,9 @@ int Server::on_read(int fd) {
   }
 
   // filling arp entry
-  arp_add(&(su.sa));
+  if (fd != unicast_fd_) {
+    arp_add(&(su.sa));
+  }
 
   if (debug::packet_lost(config.rx_loss_prob)) {
     if (!config.quiet) {
@@ -2182,7 +2184,7 @@ fail:
 
 
 namespace {
-void create_sock(std::vector<int> *fds, const char *interface, const int port, int family) {
+void create_sock(std::vector<int> *fds, const char *interface, const int port, int family, Server *s) {
   struct ifaddrs *addrs ,*tmp;
   int fd = -1;
 
@@ -2218,6 +2220,9 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
         continue;
       }
       fds->push_back(fd);
+      if (!strcmp(tmp->ifa_name, interface) {
+        s->unicast_fd(fd);
+      }
       printf("listening on interface: %s, port: %d\n", tmp->ifa_name, port);
     }
     tmp = tmp->ifa_next;
@@ -2230,7 +2235,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
 namespace {
 int serve(Server &s, const char *interface, const int port, int family) {
   std::vector<int> fds;
-  create_sock(&fds, interface, port, family);
+  create_sock(&fds, interface, port, family, s);
   if (fds.size() == 0) {
     return -1;
   }

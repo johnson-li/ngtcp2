@@ -329,6 +329,8 @@ public:
 
     int on_read(int fd);
 
+    void unicast_fd(int fd) { unicast_fd_ = fd; }
+
     int send_version_negotiation(int fd, const ngtcp2_pkt_hd *hd, const sockaddr *sa,
                                  socklen_t salen);
 
@@ -361,6 +363,7 @@ private:
     struct ev_loop *loop_;
     SSL_CTX *ssl_ctx_;
     std::vector<int> fds_;
+    int unicast_fd_;
     ev_io wevs_[20];
     ev_io revs_[20];
     ev_signal sigintev_;

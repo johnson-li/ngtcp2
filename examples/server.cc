@@ -2197,6 +2197,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
     if (!strncmp(tmp->ifa_name, "bl", 2) || !strcmp(tmp->ifa_name, interface)) {
       balancer_interfaces.insert(std::string(tmp->ifa_name));
       fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+      std::cerr << "attempt to bind on interface " << tmp->ifa_name << std::endl;
       if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
         std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
         close(fd);
@@ -2209,6 +2210,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       sa.sin_port = htons(port);
       sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
+      std::cerr << "attempt to bind on port " << port << std::endl;
       if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
         std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << ntohs(sa.sin_port) << ", " << strerror(errno) << std::endl;
         close(fd);
@@ -2236,9 +2238,6 @@ int serve(Server &s, const char *interface, const int port, int family) {
   if (s.init(fds) != 0) {
     return -1;
   }
-
-
-
   return 0;
 }
 } // namespace
@@ -2447,17 +2446,17 @@ int main(int argc, char **argv) {
   auto ready = false;
 
   Server s4(EV_DEFAULT, ssl_ctx);
-  Server s6(EV_DEFAULT, ssl_ctx);
+//  Server s6(EV_DEFAULT, ssl_ctx);
 
-  if (config.ipv6) {
-    if (serve(s6, config.interface, config.port, AF_INET6) == 0) {
-      ready = true;
-    }
-  } else {
-    if (serve(s4, config.interface, config.port, AF_INET) == 0) {
-      ready = true;
-    }
+//  if (config.ipv6) {
+//    if (serve(s6, config.interface, config.port, AF_INET6) == 0) {
+//      ready = true;
+//    }
+//  } else {
+  if (serve(s4, config.interface, config.port, AF_INET) == 0) {
+    ready = true;
   }
+//  }
 
   if (!ready) {
     exit(EXIT_FAILURE);

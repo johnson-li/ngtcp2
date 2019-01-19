@@ -1547,15 +1547,20 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
                        ? NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS
                        : NGTCP2_TRANSPORT_PARAMS_TYPE_NEW_SESSION_TICKET;
 
-  std::cerr << "before: " << params.server_unicast_ip << std::endl;
   rv = ngtcp2_decode_transport_params(&params, param_type, in, inlen);
-  std::cerr << "after: " << params.server_unicast_ip << std::endl;
   if (rv != 0) {
     std::cerr << "ngtcp2_decode_transport_params: " << ngtcp2_strerror(rv)
               << std::endl;
     *al = SSL_AD_ILLEGAL_PARAMETER;
     return -1;
   }
+
+  struct sockaddr_in sa;
+  char str[INET_ADDRSTRLEN];
+  sa.sin_addr = params.server_unicast_ip;
+  inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN);
+  std::cerr << "late binding, update remote address: " << str << std::endl;
+  c->OnMigration(params.server_unicast_ip);
 
   if (!config.quiet) {
     debug::print_indent();

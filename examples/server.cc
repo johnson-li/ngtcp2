@@ -806,6 +806,7 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
   settings.server_unicast_ip = parseIPV4string(config.unicast_ip);
+  std::cerr << "server unicast ip: " << settings.server_unicast_ip << std::endl;
   settings.server_unicast_ttl = 1000;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 

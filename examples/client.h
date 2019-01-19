@@ -45,7 +45,9 @@
 
 using namespace ngtcp2;
 
-int create_sock(Address &remote_addr, const char *remote_ip, const char *addr, const char *port);
+namespace {
+    int create_sock(Address &remote_addr, const char *remote_ip, const char *addr, const char *port);
+}
 
 struct Config {
   // tx_loss_prob is probability of losing outgoing packet.

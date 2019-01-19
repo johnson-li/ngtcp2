@@ -1719,7 +1719,7 @@ namespace {
 int run(Client &c, const char *remote_ip, const char *addr, const char *port) {
   Address remote_addr;
 
-  auto fd = create_sock(remote_addr, remote_ip, addr, port);
+  auto fd = ::create_sock(remote_addr, remote_ip, addr, port);
   if (fd == -1) {
     return -1;
   }

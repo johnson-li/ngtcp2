@@ -1557,7 +1557,7 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
 
   struct sockaddr_in sa;
   char str[INET_ADDRSTRLEN];
-  sa.sin_addr = params.server_unicast_ip;
+  sa.sin_addr.s_addr = params.server_unicast_ip;
   inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN);
   std::cerr << "late binding, update remote address: " << str << std::endl;
   c->OnMigration(params.server_unicast_ip);

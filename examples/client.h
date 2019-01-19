@@ -45,6 +45,8 @@
 
 using namespace ngtcp2;
 
+int create_sock(Address &remote_addr, const char *remote_ip, const char *addr, const char *port);
+
 struct Config {
   // tx_loss_prob is probability of losing outgoing packet.
   double tx_loss_prob;
@@ -77,6 +79,10 @@ struct Config {
   // tp_file is a path to a fie to write, and read QUIC transport
   // parameters.
   const char *tp_file;
+
+  const char *remote_ip;
+  const char *addr;
+  const char *port;
 };
 
 struct Buffer {

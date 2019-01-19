@@ -707,13 +707,18 @@ int Client::OnMigration(uint32_t peer_address) {
 
   remote_addr_.su.in = remote_addr;
   remote_addr_.len = sizeof(remote_addr);
-  if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
-    std::cerr << "connect: " << strerror(errno) << std::endl;
-    return -1;
-  }
+
   char ip_str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(server_addr), ip_str, INET_ADDRSTRLEN);
   std::cerr << "migrate server's address to " << ip_str << std::endl;
+
+  Address address;
+  auto fd = create_sock(address, ip_str, ip_str, config.port);
+  if (-1 == connect(fd, &address.su.sa, address.len)) {
+    std::cerr << "connect: " << strerror(errno) << std::endl;
+    return -1;
+  }
+  fd_ = fd;
   return 1;
 }
 
@@ -1964,6 +1969,9 @@ int main(int argc, char **argv) {
 
   Client c(EV_DEFAULT, ssl_ctx);
 
+  config.remote_ip = remote_ip;
+  config.addr = addr;
+  config.port = port;
   if (run(c, remote_ip, addr, port) != 0) {
     exit(EXIT_FAILURE);
   }

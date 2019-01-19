@@ -614,8 +614,8 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
-  settings.server_unicast_ip = 0;
-  settings.server_unicast_ttl = 0;
+//  settings.server_unicast_ip = 0;
+//  settings.server_unicast_ttl = 0;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
   rv = ngtcp2_conn_client_new(&conn_, conn_id, version, &callbacks, &settings,
@@ -1547,7 +1547,9 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
                        ? NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS
                        : NGTCP2_TRANSPORT_PARAMS_TYPE_NEW_SESSION_TICKET;
 
+  std::cerr << "before: " << params.server_unicast_ip << std::endl;
   rv = ngtcp2_decode_transport_params(&params, param_type, in, inlen);
+  std::cerr << "after: " << params.server_unicast_ip << std::endl;
   if (rv != 0) {
     std::cerr << "ngtcp2_decode_transport_params: " << ngtcp2_strerror(rv)
               << std::endl;

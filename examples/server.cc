@@ -1730,12 +1730,11 @@ int Server::on_read(int fd) {
   int rv;
   ngtcp2_pkt_hd hd;
 
-  printf("on_read");
   auto nread =
       recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   char str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(su.in.sin_addr), str, INET_ADDRSTRLEN);
-  std::cerr << "Got packet from " << str << std::endl;
+  std::cerr << "Got packet from " << str << ", " << fd << std::endl;
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1841,7 +1840,7 @@ int Server::on_read(int fd) {
     return 0;
   }
 
-  std::cerr << "update fd " << fd << std::endl;
+  std::cerr << "update fd: " << fd << std::endl;
   h->update_fd(fd);
   rv = h->on_read(buf.data(), nread);
   if (rv != 0) {
@@ -1934,6 +1933,7 @@ int Server::send_packet(int fd, Address &remote_addr, Buffer &buf) {
   ssize_t nwrite = 0;
 
   do {
+    std::cerr << "sendto fd: " << fd << std::endl;
     nwrite = sendto(fd, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
                     remote_addr.len);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
@@ -2224,6 +2224,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       }
       fds->push_back(fd);
       if (!strcmp(tmp->ifa_name, interface)) {
+        std::cerr << "set unicast fd: " << fd << std::endl;
         s.unicast_fd(fd);
       }
       printf("listening on interface: %s, port: %d, fd: %d\n", tmp->ifa_name, port, fd);

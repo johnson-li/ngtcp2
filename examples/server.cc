@@ -807,7 +807,6 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.omit_connection_id = 0;
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
   settings.server_unicast_ip = parseIPV4string(config.unicast_ip);
-  std::cerr << "server unicast ip: " << settings.server_unicast_ip << std::endl;
   settings.server_unicast_ttl = 1000;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
 
@@ -1734,6 +1733,9 @@ int Server::on_read(int fd) {
   printf("on_read");
   auto nread =
       recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
+  char str[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &(su.in.sin_addr), str, INET_ADDRSTRLEN);
+  std::cerr << "Got packet from " << str << std::endl;
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1839,6 +1841,7 @@ int Server::on_read(int fd) {
     return 0;
   }
 
+  std::cerr << "update fd " << fd << std::endl;
   h->update_fd(fd);
   rv = h->on_read(buf.data(), nread);
   if (rv != 0) {
@@ -2201,7 +2204,6 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
     if (!strncmp(tmp->ifa_name, "bl", 2) || !strcmp(tmp->ifa_name, interface)) {
       balancer_interfaces.insert(std::string(tmp->ifa_name));
       fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
-      std::cerr << "attempt to bind on interface " << tmp->ifa_name << std::endl;
       if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
         std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
         close(fd);
@@ -2214,7 +2216,6 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       sa.sin_port = htons(port);
       sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
-      std::cerr << "attempt to bind on port " << port << std::endl;
       if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
         std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << ntohs(sa.sin_port) << ", " << strerror(errno) << std::endl;
         close(fd);
@@ -2225,7 +2226,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       if (!strcmp(tmp->ifa_name, interface)) {
         s.unicast_fd(fd);
       }
-      printf("listening on interface: %s, port: %d\n", tmp->ifa_name, port);
+      printf("listening on interface: %s, port: %d, fd: %d\n", tmp->ifa_name, port, fd);
     }
     tmp = tmp->ifa_next;
   }

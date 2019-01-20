@@ -42,6 +42,9 @@ void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
   sa.sin_family = AF_INET;
   sa.sin_port = udph->dest;
   sa.sin_addr.s_addr = iph->daddr;
+  char str[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN);
+  std::cerr << "send packet to " << str << ":" << ntohs(sa.sin_port) << std::endl;
   if (sendto(wfd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *) &sa, sizeof(sa)) < 0) {
     perror("Failed to forward ip packet");
   } else {

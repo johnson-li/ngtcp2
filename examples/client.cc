@@ -171,12 +171,39 @@ BIO_METHOD *create_bio_method() {
 } // namespace
 
 namespace {
+  void writecb2(struct ev_loop *loop, ev_io *w, int revents) {
+    ev_io_stop(loop, w);
+
+    auto c = static_cast<Client *>(w->data);
+
+    auto rv = c->on_write(false);
+    if (rv == NETWORK_ERR_SEND_FATAL) {
+      c->disconnect();
+      return;
+    }
+  }
+
+  void readcb2(struct ev_loop *loop, ev_io *w, int revents) {
+    auto c = static_cast<Client *>(w->data);
+
+    if (c->on_read(false) != 0) {
+      c->disconnect();
+      return;
+    }
+    auto rv = c->on_write(false);
+    if (rv == NETWORK_ERR_SEND_FATAL) {
+      c->disconnect();
+    }
+  }
+}
+
+namespace {
 void writecb(struct ev_loop *loop, ev_io *w, int revents) {
   ev_io_stop(loop, w);
 
   auto c = static_cast<Client *>(w->data);
 
-  auto rv = c->on_write();
+  auto rv = c->on_write(true);
   if (rv == NETWORK_ERR_SEND_FATAL) {
     c->disconnect();
     return;
@@ -188,11 +215,11 @@ namespace {
 void readcb(struct ev_loop *loop, ev_io *w, int revents) {
   auto c = static_cast<Client *>(w->data);
 
-  if (c->on_read() != 0) {
+  if (c->on_read(true) != 0) {
     c->disconnect();
     return;
   }
-  auto rv = c->on_write();
+  auto rv = c->on_write(true);
   if (rv == NETWORK_ERR_SEND_FATAL) {
     c->disconnect();
   }
@@ -722,7 +749,7 @@ int Client::OnMigration(uint32_t peer_address) {
     std::cerr << "connect: " << strerror(errno) << std::endl;
     return -1;
   }
-  fd_ = fd;
+  fd2_ = fd;
   ev_io_set(&wev2_, fd_, EV_WRITE);
   ev_io_set(&rev2_, fd_, EV_READ);
   ev_io_start(loop_, &rev2_);
@@ -857,12 +884,11 @@ int Client::feed_data(uint8_t *data, size_t datalen) {
   return 0;
 }
 
-int Client::on_read() {
+int Client::on_read(bool primary) {
   std::array<uint8_t, 65536> buf;
 
   for (;;) {
-    auto nread =
-        recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
+    auto nread = recvfrom(if primary ? fd_ : fd2_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
 
     if (nread == -1) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -888,9 +914,9 @@ int Client::on_read() {
   return 0;
 }
 
-int Client::on_write() {
+int Client::on_write(bool primary) {
   if (sendbuf_.size() > 0) {
-    auto rv = send_packet();
+    auto rv = send_packet(primary);
     if (rv != NETWORK_ERR_OK) {
       return rv;
     }
@@ -918,7 +944,7 @@ int Client::on_write() {
 
     sendbuf_.push(n);
 
-    auto rv = send_packet();
+    auto rv = send_packet(primary);
     if (rv == NETWORK_ERR_SEND_NON_FATAL) {
       break;
     }
@@ -1188,7 +1214,7 @@ ssize_t Client::decrypt_data(uint8_t *dest, size_t destlen,
 
 ngtcp2_conn *Client::conn() const { return conn_; }
 
-int Client::send_packet() {
+int Client::send_packet(bool primary) {
   if (debug::packet_lost(config.tx_loss_prob)) {
     if (!config.quiet) {
       std::cerr << "** Simulated outgoing packet loss **" << std::endl;
@@ -1201,7 +1227,7 @@ int Client::send_packet() {
   ssize_t nwrite = 0;
 
   do {
-    nwrite = send(fd_, sendbuf_.rpos(), sendbuf_.size(), 0);
+    nwrite = send(if primary ? fd_ : fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 
   if (nwrite == -1) {
@@ -1317,7 +1343,7 @@ int Client::handle_error(int liberr) {
 
   sendbuf_.push(n);
 
-  return send_packet();
+  return send_packet(false);
 }
 
 namespace {

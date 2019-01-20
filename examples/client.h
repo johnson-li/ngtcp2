@@ -155,8 +155,8 @@ public:
 
   int tls_handshake(bool initial = false);
   int read_tls();
-  int on_read();
-  int on_write();
+  int on_read(bool primary);
+  int on_write(bool primary);
   int on_write_stream(uint64_t stream_id, uint8_t fin, Buffer &data);
   int feed_data(uint8_t *data, size_t datalen);
   void schedule_retransmit();
@@ -188,7 +188,7 @@ public:
                        const uint8_t *nonce, size_t noncelen, const uint8_t *ad,
                        size_t adlen);
   ngtcp2_conn *conn() const;
-  int send_packet();
+  int send_packet(bool primary);
   int start_interactive_input();
   int send_interactive_input();
   int stop_interactive_input();
@@ -216,6 +216,7 @@ private:
   SSL_CTX *ssl_ctx_;
   SSL *ssl_;
   int fd_;
+  int fd2_;
   int datafd_;
   std::map<uint32_t, std::unique_ptr<Stream>> streams_;
   std::deque<Buffer> chandshake_;

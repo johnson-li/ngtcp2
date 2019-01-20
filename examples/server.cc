@@ -1507,7 +1507,7 @@ uint64_t Handler::client_conn_id() const { return client_conn_id_; }
 
 Server *Handler::server() const { return server_; }
 
-const Address *handler::remote_addr() const { return &remote_addr_; }
+Address *Handler::remote_addr() { return &remote_addr_; }
 
 ngtcp2_conn *Handler::conn() const { return conn_; }
 

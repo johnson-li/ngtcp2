@@ -1734,7 +1734,7 @@ int Server::on_read(int fd) {
       recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   char str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(su.in.sin_addr), str, INET_ADDRSTRLEN);
-  std::cerr << "Got packet from " << str << ", " << fd << std::endl;
+  std::cerr << "Got packet from " << str << ":" << ntohs(su.in.sin_port) << ", " << fd << std::endl;
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1935,8 +1935,10 @@ int Server::send_packet(int fd, Address &remote_addr, Buffer &buf) {
   int eintr_retries = 5;
   ssize_t nwrite = 0;
 
+  char str[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &(remote_addr.su.in.sin_addr), str, INET_ADDRSTRLEN);
   do {
-    std::cerr << "sendto fd: " << fd << std::endl;
+    std::cerr << "sendto address: " << str << ":" << ntohs(remote_addr.su.in.sin_port) << ", fd: " << fd << std::endl;
     nwrite = sendto(fd, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
                     remote_addr.len);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));

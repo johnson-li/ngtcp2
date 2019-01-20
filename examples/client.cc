@@ -690,8 +690,8 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   ngtcp2_conn_set_handshake_rx_keys(conn_, key.data(), keylen, iv.data(),
                                     ivlen);
 
-  ev_io_set(&wev2_, fd_, EV_WRITE);
-  ev_io_set(&rev2_, fd_, EV_READ);
+  ev_io_set(&wev_, fd_, EV_WRITE);
+  ev_io_set(&rev_, fd_, EV_READ);
 
   ev_io_start(loop_, &rev_);
   ev_timer_again(loop_, &timer_);
@@ -723,8 +723,8 @@ int Client::OnMigration(uint32_t peer_address) {
     return -1;
   }
   fd_ = fd;
-  ev_io_set(&wev_, fd_, EV_WRITE);
-  ev_io_set(&rev_, fd_, EV_READ);
+  ev_io_set(&wev2_, fd_, EV_WRITE);
+  ev_io_set(&rev2_, fd_, EV_READ);
   return 1;
 }
 

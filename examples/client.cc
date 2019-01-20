@@ -255,10 +255,14 @@ Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
       nstreams_done_(0),
       resumption_(false) {
   ev_io_init(&wev_, writecb, 0, EV_WRITE);
+  ev_io_init(&wev2_, writecb, 0, EV_WRITE);
   ev_io_init(&rev_, readcb, 0, EV_READ);
+  ev_io_init(&rev2_, readcb, 0, EV_READ);
   ev_io_init(&stdinrev_, stdin_readcb, 0, EV_READ);
   wev_.data = this;
+  wev2_.data = this;
   rev_.data = this;
+  rev2_.data = this;
   stdinrev_.data = this;
   ev_timer_init(&timer_, timeoutcb, 0., config.timeout);
   timer_.data = this;
@@ -686,8 +690,8 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   ngtcp2_conn_set_handshake_rx_keys(conn_, key.data(), keylen, iv.data(),
                                     ivlen);
 
-  ev_io_set(&wev_, fd_, EV_WRITE);
-  ev_io_set(&rev_, fd_, EV_READ);
+  ev_io_set(&wev2_, fd_, EV_WRITE);
+  ev_io_set(&rev2_, fd_, EV_READ);
 
   ev_io_start(loop_, &rev_);
   ev_timer_again(loop_, &timer_);

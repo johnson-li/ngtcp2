@@ -206,6 +206,8 @@ private:
   size_t max_pktlen_;
   ev_io wev_;
   ev_io rev_;
+  ev_io wev2_;
+  ev_io rev2_;
   ev_io stdinrev_;
   ev_timer timer_;
   ev_timer rttimer_;

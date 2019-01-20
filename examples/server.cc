@@ -1844,7 +1844,7 @@ int Server::on_read(int fd) {
   auto remote_addr = h->remote_addr();
   remote_addr.len = addrlen;
   memcpy(&remote_addr.su.sa, &su.sa, addrlen);
-  char str[INET_ADDRSTRLEN];
+//  char str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(remote_addr.su.in.sin_addr), str, INET_ADDRSTRLEN);
   std::cerr << "update fd: " << fd << ", " << str << ":" << ntohs(remote_addr.su.in.sin_port) << std::endl;
   remote_addr = h->remote_addr();

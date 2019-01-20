@@ -1507,7 +1507,7 @@ uint64_t Handler::client_conn_id() const { return client_conn_id_; }
 
 Server *Handler::server() const { return server_; }
 
-const Address &Handler::remote_addr() const { return remote_addr_; }
+const Address *handler::remote_addr() const { return &remote_addr_; }
 
 ngtcp2_conn *Handler::conn() const { return conn_; }
 
@@ -1842,14 +1842,14 @@ int Server::on_read(int fd) {
 
   h->update_fd(fd);
   auto remote_addr = h->remote_addr();
-  remote_addr.len = addrlen;
-  memcpy(&remote_addr.su.sa, &su.sa, addrlen);
+  remote_addr->len = addrlen;
+  memcpy(&remote_addr->su.sa, &su.sa, addrlen);
 //  char str[INET_ADDRSTRLEN];
-  inet_ntop(AF_INET, &(remote_addr.su.in.sin_addr), str, INET_ADDRSTRLEN);
-  std::cerr << "update fd: " << fd << ", " << str << ":" << ntohs(remote_addr.su.in.sin_port) << std::endl;
+  inet_ntop(AF_INET, &(remote_addr->su.in.sin_addr), str, INET_ADDRSTRLEN);
+  std::cerr << "update fd: " << fd << ", " << str << ":" << ntohs(remote_addr->su.in.sin_port) << std::endl;
   remote_addr = h->remote_addr();
-  inet_ntop(AF_INET, &(remote_addr.su.in.sin_addr), str, INET_ADDRSTRLEN);
-  std::cerr << "update fd: " << fd << ", " << str << ":" << ntohs(remote_addr.su.in.sin_port) << std::endl;
+  inet_ntop(AF_INET, &(remote_addr->su.in.sin_addr), str, INET_ADDRSTRLEN);
+  std::cerr << "update fd: " << fd << ", " << str << ":" << ntohs(remote_addr->su.in.sin_port) << std::endl;
   rv = h->on_read(buf.data(), nread);
   if (rv != 0) {
     if (rv != NETWORK_ERR_CLOSE_WAIT) {

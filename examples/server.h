@@ -239,7 +239,7 @@ public:
 
     Server *server() const;
 
-    const Address &remote_addr() const;
+    const Address *remote_addr() const;
 
     ngtcp2_conn *conn() const;
 

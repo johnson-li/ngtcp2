@@ -888,7 +888,7 @@ int Client::on_read(bool primary) {
   std::array<uint8_t, 65536> buf;
 
   for (;;) {
-    auto nread = recvfrom(if primary ? fd_ : fd2_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
+    auto nread = recvfrom(primary ? fd_ : fd2_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
 
     if (nread == -1) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -962,7 +962,7 @@ int Client::on_write(bool primary) {
          it != std::end(streambuf); ++it) {
       auto &v = *it;
       auto fin = stream->should_send_fin && it + 1 == std::end(streambuf);
-      auto rv = on_write_stream(stream->stream_id, fin, v);
+      auto rv = on_write_stream(stream->stream_id, fin, v, primary);
       if (rv != 0) {
         return rv;
       }
@@ -977,7 +977,7 @@ int Client::on_write(bool primary) {
   return 0;
 }
 
-int Client::on_write_stream(uint64_t stream_id, uint8_t fin, Buffer &data) {
+int Client::on_write_stream(uint64_t stream_id, uint8_t fin, Buffer &data, bool primary) {
   size_t ndatalen;
 
   for (;;) {
@@ -1007,7 +1007,7 @@ int Client::on_write_stream(uint64_t stream_id, uint8_t fin, Buffer &data) {
 
     sendbuf_.push(n);
 
-    auto rv = send_packet();
+    auto rv = send_packet(primary);
     if (rv != NETWORK_ERR_OK) {
       return rv;
     }
@@ -1227,7 +1227,7 @@ int Client::send_packet(bool primary) {
   ssize_t nwrite = 0;
 
   do {
-    nwrite = send(if primary ? fd_ : fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
+    nwrite = send(primary ? fd_ : fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 
   if (nwrite == -1) {
@@ -1761,7 +1761,7 @@ int run(Client &c, const char *remote_ip, const char *addr, const char *port) {
     return -1;
   }
 
-  c.on_write();
+  c.on_write(true);
 
   ev_run(EV_DEFAULT, 0);
 

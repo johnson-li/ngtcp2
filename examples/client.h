@@ -157,7 +157,7 @@ public:
   int read_tls();
   int on_read(bool primary);
   int on_write(bool primary);
-  int on_write_stream(uint64_t stream_id, uint8_t fin, Buffer &data);
+  int on_write_stream(uint64_t stream_id, uint8_t fin, Buffer &data, bool primary);
   int feed_data(uint8_t *data, size_t datalen);
   void schedule_retransmit();
 

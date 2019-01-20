@@ -1844,7 +1844,7 @@ int Server::on_read(int fd) {
   h->update_fd(fd);
   auto remote_addr = h->remote_addr();
   remote_addr.len = addrlen;
-  memcpy(&remote_addr.su.sa, su.sa, addrlen);
+  memcpy(&remote_addr.su.sa, &su.sa, addrlen);
   rv = h->on_read(buf.data(), nread);
   if (rv != 0) {
     if (rv != NETWORK_ERR_CLOSE_WAIT) {

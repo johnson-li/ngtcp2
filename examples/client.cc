@@ -253,7 +253,7 @@ namespace {
 void retransmitcb(struct ev_loop *loop, ev_timer *w, int revents) {
   auto c = static_cast<Client *>(w->data);
 
-  if (c->on_write() != 0) {
+  if (c->on_write(c->fd2() <= 0) != 0) {
     c->disconnect();
   }
 }
@@ -272,6 +272,7 @@ Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
       ssl_ctx_(ssl_ctx),
       ssl_(nullptr),
       fd_(-1),
+      fd2_(-1),
       datafd_(-1),
       chandshake_idx_(0),
       nsread_(0),

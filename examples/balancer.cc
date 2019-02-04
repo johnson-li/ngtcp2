@@ -1840,11 +1840,13 @@ int Server::on_read(int fd, bool forwarded) {
           std::vector<std::string> servers;
           row = mysql_fetch_row(result);
           while (row != NULL) {
+            std::cerr << "server candidate: " << row[0] << std::endl;
             servers.push_back(row[0]);
             row = mysql_fetch_row(result);
           }
           auto server = servers[std::rand() % servers.size()];
 //      auto server = servers[0];
+          std::cerr << "selected server: " << server << std::endl;
           mysql_free_result(result);
 
           auto fd = server_fd_map_[server];

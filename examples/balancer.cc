@@ -1809,7 +1809,11 @@ int Server::on_read(int fd, bool forwarded) {
         row = mysql_fetch_row(result2);
       }
       bool forwarded = false;
+      if (latencies.empty()) {
+        std::cerr << "latencies vector is empty" << std::endl;
+      }
       for (auto ldc : latencies) {
+        std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
         if (ldc.latency <= 0) {
           continue;
         }

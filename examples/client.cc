@@ -757,8 +757,8 @@ int Client::OnMigration(uint32_t peer_address) {
     return -1;
   }
   fd2_ = fd;
-  ev_io_set(&wev2_, fd_, EV_WRITE);
-  ev_io_set(&rev2_, fd_, EV_READ);
+  ev_io_set(&wev2_, fd2_, EV_WRITE);
+  ev_io_set(&rev2_, fd2_, EV_READ);
   ev_io_start(loop_, &rev2_);
   return 1;
 }

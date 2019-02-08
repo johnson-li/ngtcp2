@@ -285,9 +285,9 @@ Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
       nstreams_done_(0),
       resumption_(false) {
   ev_io_init(&wev_, writecb, 0, EV_WRITE);
-  ev_io_init(&wev2_, writecb, 0, EV_WRITE);
+  ev_io_init(&wev2_, writecb2, 0, EV_WRITE);
   ev_io_init(&rev_, readcb, 0, EV_READ);
-  ev_io_init(&rev2_, readcb, 0, EV_READ);
+  ev_io_init(&rev2_, readcb2, 0, EV_READ);
   ev_io_init(&stdinrev_, stdin_readcb, 0, EV_READ);
   wev_.data = this;
   wev2_.data = this;

@@ -184,7 +184,7 @@ namespace {
   }
 
   void readcb2(struct ev_loop *loop, ev_io *w, int revents) {
-    std::cerr << "readcb2" << std::endl;
+//    std::cerr << "readcb2" << std::endl;
     auto c = static_cast<Client *>(w->data);
 
     if (c->on_read(false) != 0) {
@@ -214,7 +214,7 @@ void writecb(struct ev_loop *loop, ev_io *w, int revents) {
 
 namespace {
 void readcb(struct ev_loop *loop, ev_io *w, int revents) {
-  std::cerr << "readcb" << std::endl;
+//  std::cerr << "readcb" << std::endl;
   auto c = static_cast<Client *>(w->data);
 
   if (c->on_read(true) != 0) {
@@ -895,7 +895,7 @@ int Client::on_read(bool primary) {
   std::array<uint8_t, 65536> buf;
 
   for (;;) {
-    std::cerr << "recvfrom " << (primary ? "fd_" : "fd2_") << std::endl;
+//    std::cerr << "recvfrom " << (primary ? "fd_" : "fd2_") << std::endl;
     auto nread = recvfrom(primary ? fd_ : fd2_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
 
     if (nread == -1) {

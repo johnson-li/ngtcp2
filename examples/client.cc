@@ -219,7 +219,7 @@ void readcb(struct ev_loop *loop, ev_io *w, int revents) {
     c->disconnect();
     return;
   }
-  auto rv = c->on_write(true);
+  auto rv = c->on_write(false);
   if (rv == NETWORK_ERR_SEND_FATAL) {
     c->disconnect();
   }

@@ -612,6 +612,18 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
 
   h->send_greeting();
 
+  rv = h->on_write();
+  switch (rv) {
+    case 0:
+    case NETWORK_ERR_CLOSE_WAIT:
+      break;
+    case NETWORK_ERR_SEND_NON_FATAL:
+      start_wev();
+      break;
+    default:
+      remove(h);
+  }
+
   return 0;
 }
 } // namespace

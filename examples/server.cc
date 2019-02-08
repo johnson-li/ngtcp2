@@ -610,6 +610,7 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
     debug::handshake_completed(conn, user_data);
   }
 
+  debug::print_timestamp();
   h->send_greeting();
 
   int rv = h->on_write();
@@ -1579,6 +1580,7 @@ int Handler::send_greeting() {
 
   streams_.emplace(stream_id, std::move(stream));
 
+  std::cerr << "send greeting" << std::endl;
   return 0;
 }
 

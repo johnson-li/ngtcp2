@@ -554,7 +554,7 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   }
 
   char str[INET_ADDRSTRLEN];
-  inet_ntop(AF_INET, &(remote_addr_.su.sa.sin_addr), str, INET_ADDRSTRLEN);
+  inet_ntop(AF_INET, &(remote_addr_.su.in.sin_addr), str, INET_ADDRSTRLEN);
   std::cerr << "bind fd_ with " << str << std::endl;
   fd_ = fd;
   datafd_ = datafd;
@@ -1232,7 +1232,7 @@ int Client::send_packet(bool primary) {
   ssize_t nwrite = 0;
 
   do {
-    std::cerr << "send to " << primary ? "fd_" : "fd2_"  << std::endl;
+    std::cerr << "send to " << (primary ? "fd_" : "fd2_")  << std::endl;
     nwrite = send(primary ? fd_ : fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 

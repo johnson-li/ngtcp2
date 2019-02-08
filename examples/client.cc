@@ -184,7 +184,7 @@ namespace {
   }
 
   void readcb2(struct ev_loop *loop, ev_io *w, int revents) {
-    std::cerr << "readcb2" << std::cerr;
+    std::cerr << "readcb2" << std::endl;
     auto c = static_cast<Client *>(w->data);
 
     if (c->on_read(false) != 0) {
@@ -214,7 +214,7 @@ void writecb(struct ev_loop *loop, ev_io *w, int revents) {
 
 namespace {
 void readcb(struct ev_loop *loop, ev_io *w, int revents) {
-  std::cerr << "readcb" << std::cerr;
+  std::cerr << "readcb" << std::endl;
   auto c = static_cast<Client *>(w->data);
 
   if (c->on_read(true) != 0) {

@@ -553,6 +553,9 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
     return -1;
   }
 
+  char str[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &(remote_addr_.su.sa.sin_addr), str, INET_ADDRSTRLEN);
+  std::cerr << "bind fd_ with " << str << std::endl;
   fd_ = fd;
   datafd_ = datafd;
 
@@ -746,6 +749,7 @@ int Client::OnMigration(uint32_t peer_address) {
 
   Address address;
   auto fd = create_sock(address, ip_str, ip_str, config.port);
+  std::cerr << "bind fd2_ with " << ip_str << std::endl;
   if (-1 == connect(fd, &address.su.sa, address.len)) {
     std::cerr << "connect: " << strerror(errno) << std::endl;
     return -1;
@@ -1228,6 +1232,7 @@ int Client::send_packet(bool primary) {
   ssize_t nwrite = 0;
 
   do {
+    std::cerr << "send to " << primary ? "fd_" : "fd2_"  << std::endl;
     nwrite = send(primary ? fd_ : fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 

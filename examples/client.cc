@@ -893,6 +893,7 @@ int Client::on_read(bool primary) {
   std::array<uint8_t, 65536> buf;
 
   for (;;) {
+    std::cerr << "recvfrom " << (primary ? "fd_" : "fd2_") << std::endl;
     auto nread = recvfrom(primary ? fd_ : fd2_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
 
     if (nread == -1) {

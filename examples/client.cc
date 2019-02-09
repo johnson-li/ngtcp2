@@ -283,7 +283,8 @@ Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
       sendbuf_{NGTCP2_MAX_PKTLEN_IPV4},
       last_stream_id_(0),
       nstreams_done_(0),
-      resumption_(false) {
+      resumption_(false),
+      late_bound_(false) {
   ev_io_init(&wev_, writecb, 0, EV_WRITE);
   ev_io_init(&wev2_, writecb2, 0, EV_WRITE);
   ev_io_init(&rev_, readcb, 0, EV_READ);
@@ -735,6 +736,12 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
 }
 
 int Client::OnMigration(uint32_t peer_address) {
+  if (late_bound_) {
+    return 0;
+  } else {
+    late_bound_ = true;
+  }
+
   sockaddr_in remote_addr;
   in_addr server_addr;
   server_addr.s_addr = peer_address;

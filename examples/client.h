@@ -237,6 +237,7 @@ private:
   uint64_t nstreams_done_;
   // resumption_ is true if client attempts to resume session.
   bool resumption_;
+  bool late_bound_;
 };
 
 #endif // CLIENT_H

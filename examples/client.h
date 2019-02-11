@@ -64,6 +64,8 @@ struct Config {
   bool interactive;
   // nstreams is the number of streams to open.
   size_t nstreams;
+  int concurrency =  1;
+
   // data is the pointer to memory region which maps file denoted by
   // fd.
   uint8_t *data;

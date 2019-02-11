@@ -1779,8 +1779,6 @@ int run(Client &c, const char *remote_ip, const char *addr, const char *port) {
 
   c.on_write(true);
 
-  ev_run(EV_DEFAULT, 0);
-
   return 0;
 }
 } // namespace
@@ -1883,6 +1881,7 @@ int main(int argc, char **argv) {
         {"rx-loss", required_argument, nullptr, 'r'},
         {"interactive", no_argument, nullptr, 'i'},
         {"data", required_argument, nullptr, 'd'},
+        {"concurrency", required_argument, nullptr, 'c'},
         {"nstreams", required_argument, nullptr, 'n'},
         {"version", required_argument, nullptr, 'v'},
         {"quiet", no_argument, nullptr, 'q'},
@@ -1916,6 +1915,10 @@ int main(int argc, char **argv) {
     case 'n':
       // --streams
       config.nstreams = strtol(optarg, nullptr, 10);
+      break;
+    case 'c:
+      // --concurrency
+      config.concurrency = strtol(optarg, nullptr, 10);
       break;
     case 'q':
       // -quiet
@@ -2016,14 +2019,20 @@ int main(int argc, char **argv) {
     debug::set_color_output(true);
   }
 
-  Client c(EV_DEFAULT, ssl_ctx);
-
   config.remote_ip = remote_ip;
   config.addr = addr;
   config.port = port;
-  if (run(c, remote_ip, addr, port) != 0) {
-    exit(EXIT_FAILURE);
+
+  std::vector<Client*> clients;
+  for (int i = 0; i < config.concurrency; ++i) {
+    Client *client = new Client(EV_DEFAULT, ssl_ctx);
+    clients.push_back(client);
+    run(*client, remote_ip, addr, port);
   }
+//  Client c(EV_DEFAULT, ssl_ctx);
+//  run(c, remote_ip, addr, port);
+
+  ev_run(EV_DEFAULT, 0);
 
   close(c);
 

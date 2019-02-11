@@ -1916,7 +1916,7 @@ int main(int argc, char **argv) {
       // --streams
       config.nstreams = strtol(optarg, nullptr, 10);
       break;
-    case 'c:
+    case 'c':
       // --concurrency
       config.concurrency = strtol(optarg, nullptr, 10);
       break;
@@ -2034,7 +2034,10 @@ int main(int argc, char **argv) {
 
   ev_run(EV_DEFAULT, 0);
 
-  close(c);
+  for (auto client: clients) {
+      close(client);
+  }
+//  close(c);
 
   return EXIT_SUCCESS;
 }

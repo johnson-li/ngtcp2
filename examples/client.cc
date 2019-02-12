@@ -63,7 +63,7 @@ namespace {
 constexpr size_t MAX_BYTES_IN_FLIGHT = 1460 * 10;
 } // namespace
 
-std::map<ngtcp2::ngtcp2_conn*, std::chrono::steady_clock::time_point> start_ts;
+std::map<ngtcp2_conn*, std::chrono::steady_clock::time_point> start_ts;
 
 Buffer::Buffer(const uint8_t *data, size_t datalen)
     : buf{data, data + datalen},

@@ -1933,6 +1933,10 @@ int Server::on_read(int fd, bool forwarded) {
     remove(handler_it);
   }
 
+  // Terminate connection
+  std::cerr << "Terminate connection after forwarding" << std::endl;
+  disconnect(0);
+  close();
   return 0;
 }
 

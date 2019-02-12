@@ -1848,8 +1848,8 @@ int Server::on_read(int fd, bool forwarded) {
             servers.push_back(row[0]);
             row = mysql_fetch_row(result);
           }
-          auto server = servers[std::rand() % servers.size()];
-//      auto server = servers[0];
+//          auto server = servers[std::rand() % servers.size()];
+          auto server = servers[0];
           std::cerr << "selected server: " << server << std::endl;
           mysql_free_result(result);
 

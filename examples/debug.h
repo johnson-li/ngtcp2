@@ -45,6 +45,8 @@ void reset_timestamp();
 
 std::chrono::microseconds timestamp();
 
+std::chrono::microseconds timestamp(std::chrono::steady_clock::time_point base);
+
 void set_color_output(bool f);
 
 void print_timestamp();

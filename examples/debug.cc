@@ -42,6 +42,11 @@ std::chrono::steady_clock::time_point ts_base;
 
 void reset_timestamp() { ts_base = std::chrono::steady_clock::now(); }
 
+std::chrono::microseconds ts(std::chrono::steady_clock::time_point base) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - base);
+}
+
 std::chrono::microseconds timestamp() {
   return std::chrono::duration_cast<std::chrono::microseconds>(
       std::chrono::steady_clock::now() - ts_base);

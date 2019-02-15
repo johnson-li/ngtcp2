@@ -1837,7 +1837,7 @@ int Server::on_read(int fd, bool forwarded) {
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
-            std::cerr << "Forwarded to balancer: " << ldc.dc << std::endl;
+            std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
           }
         } else {
           // The current dc is the best, choose server to forward

@@ -1940,8 +1940,14 @@ int Server::on_read(int fd, bool forwarded) {
 
   // Terminate connection
   std::cerr << "Terminate connection after forwarding" << std::endl;
-  disconnect(0);
-  close();
+  while (!handlers_.empty()) {
+    auto it = std::begin(handlers_);
+    auto &h = (*it).second;
+
+    h->handle_error(0);
+
+    remove(it);
+  }
   return 0;
 }
 

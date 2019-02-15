@@ -1812,6 +1812,10 @@ int Server::on_read(int fd, bool forwarded) {
       if (latencies.empty()) {
         std::cerr << "latencies vector is empty" << std::endl;
       }
+      std::cerr << "=====latency info=====" << std::endl;
+      for (auto ldc : latencies) {
+        std::cerr << ldc.dc << ": " << ldc.latency << std::endl;
+      }
       for (auto ldc : latencies) {
         std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
         if (ldc.latency <= 0) {

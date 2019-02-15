@@ -1799,13 +1799,13 @@ int Server::on_read(int fd, bool forwarded) {
       }
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
       sql.str("");
-      sql << "select datacenter from deployment where domain = '" << h->hostname() << "'";
+      sql << "select datacenter, loadbalancer from deployment where domain = '" << h->hostname() << "'";
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
-      std::set<std::string> dcs;
+      std::map<std::string, std::string> dcs;
       row = mysql_fetch_row(result2);
       while (row != NULL) {
-        dcs.insert(row[0]);
+        dcs[row[0]] = row[1];
         row = mysql_fetch_row(result2);
       }
       bool forwarded = false;
@@ -1831,7 +1831,8 @@ int Server::on_read(int fd, bool forwarded) {
         sa.sin_addr.s_addr = iph->daddr;
         if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
           // The current dc is not the best, forward the packet to ldc
-          auto fd = balancer_fd_map_[ldc.dc];
+          auto interface = dcs[ldc.dc];
+          auto fd = balancer_fd_map_[interface];
           forwarded = true;
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");

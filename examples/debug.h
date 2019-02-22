@@ -42,8 +42,6 @@ namespace ngtcp2 {
 
 namespace debug {
 
-std::map<ngtcp2_conn*, std::chrono::steady_clock::time_point> start_ts;
-
 void reset_timestamp();
 
 std::chrono::microseconds timestamp();
@@ -66,7 +64,7 @@ int recv_pkt(ngtcp2_conn *conn, const ngtcp2_pkt_hd *hd, void *user_data);
 int recv_frame(ngtcp2_conn *conn, const ngtcp2_pkt_hd *hd,
                const ngtcp2_frame *fr, void *user_data);
 
-int handshake_completed(ngtcp2_conn *conn, void *user_data);
+int handshake_completed(std::map<ngtcp2_conn*, std::chrono::steady_clock::time_point> *start_ts, ngtcp2_conn *conn, void *user_data);
 
 int recv_version_negotiation(ngtcp2_conn *conn, const ngtcp2_pkt_hd *hd,
                              const uint32_t *sv, size_t nsv, void *user_data);

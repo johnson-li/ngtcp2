@@ -420,7 +420,7 @@ int recv_frame(ngtcp2_conn *conn, const ngtcp2_pkt_hd *hd,
   return 0;
 }
 
-int handshake_completed(ngtcp2_conn *conn, void *user_data) {
+int handshake_completed(std::map<ngtcp2_conn*, std::chrono::steady_clock::time_point> *start_ts, ngtcp2_conn *conn, void *user_data) {
   print_timestamp();
   fprintf(outfile, "QUIC handshake has completed\n");
   auto t = ts(start_ts[conn]).count();

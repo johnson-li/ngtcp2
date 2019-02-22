@@ -424,7 +424,7 @@ int handshake_completed(std::map<ngtcp2_conn*, std::chrono::steady_clock::time_p
   print_timestamp();
   fprintf(outfile, "QUIC handshake has completed\n");
   if (start_ts) {
-    auto t = ts(*start_ts[conn]).count();
+    auto t = ts((*start_ts)[conn]).count();
     fprintf(outfile, "handshake time: %ld\n", t);
   }
   return 0;

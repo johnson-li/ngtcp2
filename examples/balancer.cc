@@ -618,7 +618,7 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
   auto h = static_cast<Handler *>(user_data);
 
   if (!config.quiet) {
-    debug::handshake_completed(conn, user_data);
+    debug::handshake_completed(nullptr, conn, user_data);
   }
 
   h->send_greeting();

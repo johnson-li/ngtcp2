@@ -63,7 +63,6 @@ namespace {
 constexpr size_t MAX_BYTES_IN_FLIGHT = 1460 * 10;
 } // namespace
 
-std::map<ngtcp2_conn*, std::chrono::steady_clock::time_point> start_ts;
 
 Buffer::Buffer(const uint8_t *data, size_t datalen)
     : buf{data, data + datalen},
@@ -348,6 +347,7 @@ namespace {
 ssize_t send_client_initial(ngtcp2_conn *conn, uint32_t flags,
                             uint64_t *ppkt_num, const uint8_t **pdest,
                             void *user_data) {
+  debug::start_ts[conn] = std::chrono::steady_clock::now();
   auto c = static_cast<Client *>(user_data);
 
   if (c->tls_handshake(true) != 0) {
@@ -404,7 +404,7 @@ int recv_stream_data(ngtcp2_conn *conn, uint64_t stream_id, uint8_t fin,
   if (!config.quiet) {
     debug::print_stream_data(stream_id, data, datalen);
   }
-  auto t = debug::ts(start_ts[conn]).count();
+  auto t = debug::ts(debug::start_ts[conn]).count();
   std::cerr << "transfer time: " << t << std::endl;
   ngtcp2_conn_extend_max_stream_offset(conn, stream_id, datalen);
   ngtcp2_conn_extend_max_offset(conn, datalen);
@@ -1781,7 +1781,6 @@ int run(Client &c, const char *remote_ip, const char *addr, const char *port) {
     return -1;
   }
 
-  start_ts[c.conn()] = std::chrono::steady_clock::now();
   c.on_write(true);
 
   return 0;

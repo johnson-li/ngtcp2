@@ -41,6 +41,8 @@ namespace ngtcp2 {
 
 namespace debug {
 
+std::map<ngtcp2_conn*, std::chrono::steady_clock::time_point> start_ts;
+
 void reset_timestamp();
 
 std::chrono::microseconds timestamp();

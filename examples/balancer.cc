@@ -68,8 +68,8 @@ namespace {
 MYSQL *mysql_connect(const char *user, const char *password, const char *mysql_ip) {
   MYSQL *mysql = (MYSQL *) calloc(1, sizeof(MYSQL));
   mysql_init(mysql);
-  mysql_real_connect(mysql, mysql_ip, user, password, "sid", 3306, NULL, 0);
-  printf("Connected to data based\n");
+  mysql_real_connect(mysql, mysql_ip, user, password, "serviceid_db", 3306, NULL, 0);
+  std::cerr << "Connected to database, ip: " << mysql_ip << ", user: " << user << ", passwd: " << password << std::endl;
   return mysql;
 }
 }
@@ -1791,6 +1791,7 @@ int Server::on_read(int fd, bool forwarded) {
       std::cerr << "executing sql: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result = mysql_store_result(mysql_);
+      std::cerr << result << std::endl;
       row = mysql_fetch_row(result);
       std::vector<LatencyDC> latencies;
       while (row != NULL) {

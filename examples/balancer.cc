@@ -1788,6 +1788,7 @@ int Server::on_read(int fd, bool forwarded) {
       // select balancer
       sql.str("");
       sql << "select dc, latency from measurements where (dc, client, ts) in (select dc, client , max(ts) from measurements where client = '" << sender_ip << "' group by dc, client)";
+      std::cerr << "executing sql: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result = mysql_store_result(mysql_);
       row = mysql_fetch_row(result);
@@ -1800,6 +1801,7 @@ int Server::on_read(int fd, bool forwarded) {
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
       sql.str("");
       sql << "select datacenter, loadbalancer from deployment where domain = '" << h->hostname() << "'";
+      std::cerr << "executing sql: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
       std::map<std::string, std::string> dcs;
@@ -2330,11 +2332,11 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
       tmp = tmp->ifa_next;
       continue;
     }
-    if (!strncmp(tmp->ifa_name, "sv", 2)) {
+    if (!strncmp(tmp->ifa_name, "server", 6)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
 
-      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, strlen(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
         std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
         close(fd);
         tmp = tmp->ifa_next;
@@ -2342,11 +2344,11 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
       }
       s.add_fd(tmp->ifa_name, fd);
       printf("Registered interface: %s as server, %d\n", tmp->ifa_name, fd);
-    } else if (!strncmp(tmp->ifa_name, "bl", 2)) {
+    } else if (!strncmp(tmp->ifa_name, "hestia", 6)) {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
 
-      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
+      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, strlen(tmp->ifa_name)) < 0 || setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0) {
         std::cerr << "failed to bind interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
         close(fd);
         tmp = tmp->ifa_next;

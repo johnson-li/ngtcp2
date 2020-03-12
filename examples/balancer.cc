@@ -1833,7 +1833,7 @@ int Server::on_read(int fd, bool forwarded) {
         sa.sin_port = udph->dest;
         sa.sin_addr.s_addr = iph->daddr;
         if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
-          // The current dc is not the best, forward the packet to ldc
+          std::cerr << "The current dc is not the best, forward the packet to ldc" << std::endl; 
           auto interface = dcs[ldc.dc];
           auto fd = balancer_fd_map_[interface];
           forwarded = true;
@@ -1843,7 +1843,7 @@ int Server::on_read(int fd, bool forwarded) {
             std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
           }
         } else {
-          // The current dc is the best, choose server to forward
+          std::cerr << "The current dc is the best, choose server to forward" << std::endl; 
           // select server
           sql.str("");
           sql << "select server from intra where domain = '" << h->hostname() << "' and datacenter = '" << ldc.dc.c_str() << "'";

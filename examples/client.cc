@@ -595,7 +595,7 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   if (util::numeric_host(addr)) {
     // If remote host is numeric address, just send "localhost" as SNI
     // for now.
-    SSL_set_tlsext_host_name(ssl_, "localhost");
+    SSL_set_tlsext_host_name(ssl_, "serviceid.xuebing.li");
   } else {
     SSL_set_tlsext_host_name(ssl_, addr);
   }

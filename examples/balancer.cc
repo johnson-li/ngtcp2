@@ -1788,7 +1788,7 @@ int Server::on_read(int fd, bool forwarded) {
       // select balancer
       sql.str("");
       sql << "select dc, latency from measurements where (dc, client, ts) in (select dc, client , max(ts) from measurements where client = '" << sender_ip << "' group by dc, client)";
-      std::cerr << "executing sql: " << sql.str() << std::endl;
+      std::cerr << "executing sql1: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result = mysql_store_result(mysql_);
       std::cerr << result << std::endl;
@@ -1798,11 +1798,16 @@ int Server::on_read(int fd, bool forwarded) {
         LatencyDC dc {row[0], atoi(row[1])};
         latencies.push_back(dc);
         row = mysql_fetch_row(result);
+        std::cerr << "sql1: " << row << std::endl;
+      }
+      // when no measurement query results
+      if (row == NULL){
+          std::cerr << "sql1 == null: " << row << std::endl;
       }
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
       sql.str("");
       sql << "select datacenter, loadbalancer from deployment where domain = '" << h->hostname() << "'";
-      std::cerr << "executing sql: " << sql.str() << std::endl;
+      std::cerr << "executing sql2: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
       std::map<std::string, std::string> dcs;
@@ -1813,18 +1818,24 @@ int Server::on_read(int fd, bool forwarded) {
       }
       bool forwarded = false;
       if (latencies.empty()) {
-        std::cerr << "latencies vector is empty" << std::endl;
+        std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
+        LatencyDC dc {dcs.begin()->first, 1};
+        latencies.push_back(dc);
       }
-      std::cerr << "=====latency info=====" << std::endl;
+      std::cerr << "=====latency info START=====" << std::endl;
       for (auto ldc : latencies) {
         std::cerr << ldc.dc << ": " << ldc.latency << std::endl;
       }
+      std::cerr << "=====latency info END=====" << std::endl << std::endl;
+        
+      std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
       for (auto ldc : latencies) {
         std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
         if (ldc.latency <= 0) {
           continue;
         }
         if (dcs.find(ldc.dc) == dcs.end()) {
+          std::cerr << "dcs.find(ldc.dc) == dcs.end()" << std::endl;
           continue;
         }
         struct sockaddr_in sa;
@@ -1871,6 +1882,7 @@ int Server::on_read(int fd, bool forwarded) {
         }
         break;
       }
+      std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
 
       if (!forwarded) {
         std::cerr << "Failed to find server/balancer to forward" << std::endl;

@@ -48,6 +48,7 @@
 #include "util.h"
 #include "crypto.h"
 #include "shared.h"
+#include <GeoLite2PP.hpp>
 
 using namespace ngtcp2;
 
@@ -468,7 +469,7 @@ int extend_max_stream_id(ngtcp2_conn *conn, uint64_t max_stream_id,
   }
 
   return 0;
-}
+
 
 } // namespace
 
@@ -1871,178 +1872,17 @@ Options:
   -h, --help  Display this help and exit.
 )";
 }
-} // namespace
+} // namespace:
+
+std::string geo(str::string ip) {
+	GeoLite2PP::DB db('~/GeoLite2-City.mmdb');
+	std::string res = db.loopup(ip);
+	return res;
+};
 
 int main(int argc, char **argv) {
-  config_set_default(config);
-  char *data_path = nullptr;
-  char *remote_ip = nullptr;
-
-  for (;;) {
-    static int flag = 0;
-    constexpr static option long_opts[] = {
-        {"help", no_argument, nullptr, 'h'},
-        {"tx-loss", required_argument, nullptr, 't'},
-        {"rx-loss", required_argument, nullptr, 'r'},
-        {"interactive", no_argument, nullptr, 'i'},
-        {"data", required_argument, nullptr, 'd'},
-        {"concurrency", required_argument, nullptr, 'c'},
-        {"nstreams", required_argument, nullptr, 'n'},
-        {"version", required_argument, nullptr, 'v'},
-        {"quiet", no_argument, nullptr, 'q'},
-        {"remote", required_argument, nullptr, 'a'},
-        {"ciphers", required_argument, &flag, 1},
-        {"groups", required_argument, &flag, 2},
-        {"timeout", required_argument, &flag, 3},
-        {"session-file", required_argument, &flag, 4},
-        {"tp-file", required_argument, &flag, 5},
-        {nullptr, 0, nullptr, 0},
-    };
-
-    auto optidx = 0;
-    auto c = getopt_long(argc, argv, "d:hin:qr:t:v:", long_opts, &optidx);
-    if (c == -1) {
-      break;
-    }
-    switch (c) {
-    case 'd':
-      // --data
-      data_path = optarg;
-      break;
-    case 'a':
-      // --remote
-      remote_ip = optarg;
-      break;
-    case 'h':
-      // --help
-      print_help();
-      exit(EXIT_SUCCESS);
-    case 'n':
-      // --streams
-      config.nstreams = strtol(optarg, nullptr, 10);
-      break;
-    case 'c':
-      // --concurrency
-      config.concurrency = strtol(optarg, nullptr, 10);
-      break;
-    case 'q':
-      // -quiet
-      config.quiet = true;
-      break;
-    case 'r':
-      // --rx-loss
-      config.rx_loss_prob = strtod(optarg, nullptr);
-      break;
-    case 't':
-      // --tx-loss
-      config.tx_loss_prob = strtod(optarg, nullptr);
-      break;
-    case 'i':
-      // --interactive
-      config.fd = fileno(stdin);
-      config.interactive = true;
-      break;
-    case 'v':
-      // --version
-      config.version = strtol(optarg, nullptr, 16);
-      break;
-    case '?':
-      print_usage();
-      exit(EXIT_FAILURE);
-    case 0:
-      switch (flag) {
-      case 1:
-        // --ciphers
-        config.ciphers = optarg;
-        break;
-      case 2:
-        // --groups
-        config.groups = optarg;
-        break;
-      case 3:
-        // --timeout
-        config.timeout = strtol(optarg, nullptr, 10);
-        break;
-      case 4:
-        // --session-file
-        config.session_file = optarg;
-        break;
-      case 5:
-        // --tp-file
-        config.tp_file = optarg;
-        break;
-      }
-      break;
-    default:
-      break;
-    };
-  }
-
-  if (argc - optind < 2) {
-    std::cerr << "Too few arguments" << std::endl;
-    print_usage();
-    exit(EXIT_FAILURE);
-  }
-
-  if (data_path && config.interactive) {
-    std::cerr
-        << "interactive, data: Exclusive options are specified at the same time"
-        << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  if (data_path) {
-    auto fd = open(data_path, O_RDONLY);
-    if (fd == -1) {
-      std::cerr << "data: Could not open file " << data_path << ": "
-                << strerror(errno) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
-      std::cerr << "data: Could not stat file " << data_path << ": "
-                << strerror(errno) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-    config.fd = fd;
-    config.datalen = st.st_size;
-    config.data = static_cast<uint8_t *>(
-        mmap(nullptr, config.datalen, PROT_READ, MAP_SHARED, fd, 0));
-  }
-
-  auto addr = argv[optind++];
-  auto port = argv[optind++];
-
-  auto ssl_ctx = create_ssl_ctx();
-  auto ssl_ctx_d = defer(SSL_CTX_free, ssl_ctx);
-
-  auto ev_loop_d = defer(ev_loop_destroy, EV_DEFAULT);
-
-  debug::reset_timestamp();
-
-  if (isatty(STDOUT_FILENO)) {
-    debug::set_color_output(true);
-  }
-
-  config.remote_ip = remote_ip;
-  config.addr = addr;
-  config.port = port;
-
-  std::vector<Client*> clients;
-  for (int i = 0; i < config.concurrency; ++i) {
-    Client *client = new Client(EV_DEFAULT, ssl_ctx);
-    clients.push_back(client);
-    run(*client, remote_ip, addr, port);
-  }
-//  Client c(EV_DEFAULT, ssl_ctx);
-//  run(c, remote_ip, addr, port);
-
-  ev_run(EV_DEFAULT, 0);
-
-  for (auto client: clients) {
-      close(*client);
-  }
-//  close(c);
-
-  return EXIT_SUCCESS;
+    std string ip = "114.95.170.0";
+    std::string geo_info = gep(ip);
+    return EXIT_SUCCESS;
 }
+

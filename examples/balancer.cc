@@ -1788,7 +1788,7 @@ int Server::on_read(int fd, bool forwarded) {
       // select balancer
       sql.str("");
       sql << "select dc, latency from measurements where (dc, client, ts) in (select dc, client , max(ts) from measurements where client = '" << sender_ip << "' group by dc, client)";
-      std::cerr << "executing sql: " << sql.str() << std::endl;
+      std::cerr << "executing sql1: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result = mysql_store_result(mysql_);
       std::cerr << result << std::endl;
@@ -1802,7 +1802,7 @@ int Server::on_read(int fd, bool forwarded) {
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
       sql.str("");
       sql << "select datacenter, loadbalancer from deployment where domain = '" << h->hostname() << "'";
-      std::cerr << "executing sql: " << sql.str() << std::endl;
+      std::cerr << "executing sql2: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
       std::map<std::string, std::string> dcs;
@@ -1813,12 +1813,41 @@ int Server::on_read(int fd, bool forwarded) {
       }
       bool forwarded = false;
       if (latencies.empty()) {
-        std::cerr << "latencies vector is empty" << std::endl;
+        // std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
+        // // scheme 1
+        // LatencyDC dc {"server", 1};
+        // latencies.push_back(dc);
+
+        // scheme 2
+        struct sockaddr_in sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sin_family = AF_INET;
+        sa.sin_port = udph->dest;
+        sa.sin_addr.s_addr = iph->daddr;
+        std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
+        std::map<std::string, int>::iterator iter;
+        iter = server_fd_map_.begin();
+        while(iter != server_fd_map_.end()) {
+            std::cout << iter->first << " : " << iter->second << std::endl;
+            iter++;
+        }
+        auto fd = server_fd_map_["server"];
+        std::cerr << "fd: " << fd << std::endl;
+        forwarded = true;
+        if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+          perror("Failed to forward ip packet");
+        } else {
+          std::cerr << "Forwarded to local dc: "<< std::endl;
+        }
+
       }
-      std::cerr << "=====latency info=====" << std::endl;
+      std::cerr << "=====latency info START=====" << std::endl;
       for (auto ldc : latencies) {
         std::cerr << ldc.dc << ": " << ldc.latency << std::endl;
       }
+      std::cerr << "=====latency info END=====" << std::endl << std::endl;
+        
+      std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
       for (auto ldc : latencies) {
         std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
         if (ldc.latency <= 0) {
@@ -1833,7 +1862,7 @@ int Server::on_read(int fd, bool forwarded) {
         sa.sin_port = udph->dest;
         sa.sin_addr.s_addr = iph->daddr;
         if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
-          std::cerr << "The current dc is not the best, forward the packet to ldc" << std::endl; 
+          std::cerr << "The current dc is not the best, forward the packet to ldc: " << ldc.dc.c_str() << std::endl; 
           auto interface = dcs[ldc.dc];
           auto fd = balancer_fd_map_[interface];
           forwarded = true;
@@ -1871,6 +1900,7 @@ int Server::on_read(int fd, bool forwarded) {
         }
         break;
       }
+      std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
 
       if (!forwarded) {
         std::cerr << "Failed to find server/balancer to forward" << std::endl;

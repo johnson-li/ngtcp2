@@ -1798,6 +1798,11 @@ int Server::on_read(int fd, bool forwarded) {
         LatencyDC dc {row[0], atoi(row[1])};
         latencies.push_back(dc);
         row = mysql_fetch_row(result);
+        std::cerr << "sql1: " << row << std::endl;
+      }
+      // when no measurement query results
+      if (row == NULL){
+          std::cerr << "sql1 == null: " << row << std::endl;
       }
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
       sql.str("");
@@ -1839,7 +1844,6 @@ int Server::on_read(int fd, bool forwarded) {
         } else {
           std::cerr << "Forwarded to local dc: "<< std::endl;
         }
-
       }
       std::cerr << "=====latency info START=====" << std::endl;
       for (auto ldc : latencies) {
@@ -1854,6 +1858,7 @@ int Server::on_read(int fd, bool forwarded) {
           continue;
         }
         if (dcs.find(ldc.dc) == dcs.end()) {
+          std::cerr << "dcs.find(ldc.dc) == dcs.end()" << std::endl;
           continue;
         }
         struct sockaddr_in sa;

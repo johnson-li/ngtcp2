@@ -2217,7 +2217,7 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       tmp = tmp->ifa_next;
       continue;
     }
-    if (!strncmp(tmp->ifa_name, "router", 6) || !strcmp(tmp->ifa_name, interface)) {
+    if (!strncmp(tmp->ifa_name, "router", 6) || !strcmp(tmp->ifa_name, interface) || !strncmp(tmp->ifa_name, "lo", 2)) {
       balancer_interfaces.insert(std::string(tmp->ifa_name));
       fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
       if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {

@@ -567,6 +567,16 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   fd_ = fd;
   datafd_ = datafd;
 
+  struct sockaddr_in sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sin_family = AF_INET;
+  sa.sin_port = htons(8833);
+  sa.sin_addr.s_addr = htonl(INADDR_ANY);
+  if (bind(fd_, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+    std::cerr << "bind: " << strerror(errno) << std::endl;
+    return -1;
+  }
+
   if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
     std::cerr << "connect: " << strerror(errno) << std::endl;
     return -1;
@@ -1740,9 +1750,10 @@ int create_sock(Address &remote_addr, const char *remote_ip, const char *addr, c
       continue;
     }
 
+    /*
     if (connect(fd, rp->ai_addr, rp->ai_addrlen) == -1) {
       goto next;
-    }
+    } */
 
     break;
 

@@ -1845,11 +1845,13 @@ int Server::on_read(int fd, bool forwarded) {
           std::cerr << "Forwarded to local dc: "<< std::endl;
         }
       }
+      /*
       std::cerr << "=====latency info START=====" << std::endl;
       for (auto ldc : latencies) {
         std::cerr << ldc.dc << ": " << ldc.latency << std::endl;
       }
       std::cerr << "=====latency info END=====" << std::endl << std::endl;
+      */
         
       std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
       for (auto ldc : latencies) {
@@ -1881,6 +1883,7 @@ int Server::on_read(int fd, bool forwarded) {
           // select server
           sql.str("");
           sql << "select server from intra where domain = '" << h->hostname() << "' and datacenter = '" << ldc.dc.c_str() << "'";
+          std::cerr << "executing sql: " << sql.str() << std::endl;
           mysql_query(mysql_, sql.str().c_str());
           result = mysql_store_result(mysql_);
           std::vector<std::string> servers;

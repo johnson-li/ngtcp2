@@ -219,7 +219,10 @@ private:
   SSL_CTX *ssl_ctx_;
   SSL *ssl_;
   int fd_;
+  sockaddr_in dest_addr_;
   int fd2_;
+  sockaddr_in dest_addr2_;
+  bool migrated_;
   int datafd_;
   std::map<uint32_t, std::unique_ptr<Stream>> streams_;
   std::deque<Buffer> chandshake_;

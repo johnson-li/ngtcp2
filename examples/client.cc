@@ -565,6 +565,7 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
   inet_ntop(AF_INET, &(remote_addr_.su.in.sin_addr), str, INET_ADDRSTRLEN);
   std::cerr << "bind fd_ with " << str << std::endl;
   fd_ = fd;
+  memcpy(&dest_addr_, &remote_addr_.su, remote_addr_.len);
   datafd_ = datafd;
 
   struct sockaddr_in sa;
@@ -577,10 +578,10 @@ int Client::init(int fd, const Address &remote_addr, const char *addr,
     return -1;
   }
 
-  if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
+  /*if (-1 == connect(fd_, &remote_addr_.su.sa, remote_addr_.len)) {
     std::cerr << "connect: " << strerror(errno) << std::endl;
     return -1;
-  }
+  }*/
 
   ssl_ = SSL_new(ssl_ctx_);
   auto bio = BIO_new(create_bio_method());
@@ -779,6 +780,8 @@ int Client::OnMigration(uint32_t peer_address) {
     return -1;
   }
   fd2_ = fd;
+  migrated_ = true;
+  memcpy(&dest_addr2_, &address.su, address.len);
   ev_io_set(&wev2_, fd2_, EV_WRITE);
   ev_io_set(&rev2_, fd2_, EV_READ);
   ev_io_start(loop_, &rev2_);
@@ -1245,6 +1248,7 @@ ssize_t Client::decrypt_data(uint8_t *dest, size_t destlen,
 ngtcp2_conn *Client::conn() const { return conn_; }
 
 int Client::send_packet(bool primary) {
+  primary = !migrated_;
   if (debug::packet_lost(config.tx_loss_prob)) {
     if (!config.quiet) {
       std::cerr << "** Simulated outgoing packet loss **" << std::endl;
@@ -1258,7 +1262,11 @@ int Client::send_packet(bool primary) {
 
   do {
     std::cerr << "send to " << (primary ? "fd_" : "fd2_")  << std::endl;
-    nwrite = send(primary ? fd_ : fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
+    if (primary) {
+        nwrite = sendto(fd_, sendbuf_.rpos(), sendbuf_.size(), 0, (struct sockaddr*) &dest_addr_, sizeof(dest_addr_));
+    } else {
+        nwrite = send(fd2_, sendbuf_.rpos(), sendbuf_.size(), 0);
+    }
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 
   if (nwrite == -1) {

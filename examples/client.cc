@@ -269,6 +269,51 @@ void siginthandler(struct ev_loop *loop, ev_signal *w, int revents) {
 }
 } // namespace
 
+namespace {
+int is_ip_addr(const char* pStr)  {  
+//     std::cout << "pStr: " << pStr << std::endl;
+    int bRet = 1;  
+    if (NULL == pStr) return -1;  
+        const char* p = pStr;  
+    for (; *p != '\0'; p++)  
+    {  
+        if ((isalpha(*p)) && (*p != '.'))  
+        {  
+            bRet = 0;  
+            break;  
+        }  
+    }  
+    return bRet;  
+}
+} // namespace
+
+namespace{
+int get_ip_byDomain(const char* domain, char* ip)  
+{  
+    std::cerr << "domain: " << domain << std::endl;
+    struct hostent *answer;  
+    answer = gethostbyname(domain);  
+    if (NULL == answer)  
+    {  
+        std::cerr << "get host by name error: " << domain << std::endl;
+        return -1;  
+    }  
+    if (answer->h_addr_list[0]){
+        inet_ntop(AF_INET, (answer->h_addr_list)[0], ip, 16);
+        FILE *fp; 
+        char buffer[80]; 
+        std::string str(domain);
+        std::string query_command = "dig " + str + "|grep 'Query time'|cut -d' ' -f4";
+        fp=popen(query_command.c_str(), "r"); 
+        fgets(buffer,sizeof(buffer),fp); 
+        std::cerr << "query time: " << buffer << std::endl;
+    }
+    else  
+        return -1;  
+    return 0;  
+} 
+}
+
 Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
     : remote_addr_{},
       max_pktlen_(0),
@@ -2043,9 +2088,16 @@ int main(int argc, char **argv) {
     debug::set_color_output(true);
   }
 
+  if (!is_ip_addr(addr)){
+    if(get_ip_byDomain(addr, addr)){
+      std::cerr << "fail to convert the domain:  " << addr << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   config.remote_ip = remote_ip;
   config.addr = addr;
   config.port = port;
+  std::cerr << addr << std::endl;
 
   std::vector<Client*> clients;
   for (int i = 0; i < config.concurrency; ++i) {

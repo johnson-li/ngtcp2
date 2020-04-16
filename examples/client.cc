@@ -48,7 +48,6 @@
 #include "util.h"
 #include "crypto.h"
 #include "shared.h"
-#include <GeoLite2PP.hpp>
 
 using namespace ngtcp2;
 
@@ -1874,15 +1873,83 @@ Options:
 }
 } // namespace:
 
-std::string geo(str::string ip) {
-	GeoLite2PP::DB db('~/GeoLite2-City.mmdb');
-	std::string res = db.loopup(ip);
+
+int32_t myexec(const char *cmd, std::vector<std::string> &resvec) {
+    resvec.clear();
+    FILE *pp = popen(cmd, "r"); //建立管道
+    if (!pp) {
+        return -1;
+    }
+    char tmp[1024]; //设置一个合适的长度，以存储每一行输出
+    while (fgets(tmp, sizeof(tmp), pp) != NULL) {
+        if (tmp[strlen(tmp) - 1] == '\n') {
+            tmp[strlen(tmp) - 1] = '\0'; //去除换行符
+        }
+        resvec.push_back(tmp);
+    }
+    pclose(pp); //关闭管道
+    return resvec.size();
+} 
+
+std::string geoip(std::string ip_address) {
+	char *cmd = new char[1024];
+	sprintf(cmd, "mmdblookup --file ~/data/ipdb.mmdb --ip %s", ip_address.c_str());
+//	std::cout << cmd << std::endl;
+		
+	std::vector<std::string> *vect = new std::vector<std::string>();
+	
+	int32_t a = myexec(cmd, *vect);
+ 
+//	std::cout<< a << std::endl;
+ 
+	int count = vect->size();
+	std::string res = "";
+	bool flaga = 0, flagb = 0;
+	for (int i = 0; i < count; i++) {
+//		std::cout<< (*vect)[i] <<std::endl;
+		std::string a = "latitude";
+		std::string b = "longitude";
+		std::string::size_type idx;
+		
+		if (flaga)  {
+			const char* q = NULL;
+			int  len = (*vect)[i].length();
+			q = (*vect)[i].c_str();
+			for (int j = 0; j < len; ++j) {
+				if (isdigit(q[j]) or q[j] == '.')
+					res = res + q[j];
+			}
+			flaga = 0;
+			res = res + "+";
+		}
+		if (flagb) {
+			const char* q = NULL;
+			int  len = (*vect)[i].length();
+			q = (*vect)[i].c_str();
+			for (int j = 0; j < len; ++j) {
+				if (isdigit(q[j]) or q[j] == '.')
+					res = res + q[j];
+			}
+			flagb = 0;
+		}
+		idx = (*vect)[i].find(a);
+		if(idx != std::string::npos) {
+			flaga = 1;
+		}
+
+		idx = (*vect)[i].find(b);
+		if(idx != std::string::npos) {
+			flagb = 1;
+		}
+	}	
+//	std::cout << res << std::endl;
 	return res;
-};
+}
+
 
 int main(int argc, char **argv) {
     std string ip = "114.95.170.0";
-    std::string geo_info = gep(ip);
+    std::string geo_info = geoip(ip);
     return EXIT_SUCCESS;
 }
 

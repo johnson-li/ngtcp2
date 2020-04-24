@@ -322,6 +322,7 @@ Client::Client(struct ev_loop *loop, SSL_CTX *ssl_ctx)
       ssl_(nullptr),
       fd_(-1),
       fd2_(-1),
+      migrated_(false),
       datafd_(-1),
       chandshake_idx_(0),
       nsread_(0),

@@ -2412,7 +2412,7 @@ int serve(const char *interface, Server &s, const char *addr, const char *port, 
       }
       s.add_fd(tmp->ifa_name, fd);
       printf("Registered interface: %s as server, %d\n", tmp->ifa_name, fd);
-    } else if (!strncmp(tmp->ifa_name, "hestia", 6)) {
+    } else {
       fd = socket(family, SOCK_RAW, IPPROTO_RAW);
       int on = 1;
 

@@ -1790,15 +1790,20 @@ int Server::on_read(int fd, bool forwarded) {
       sql << "select dc, latency from measurements where (dc, client, ts) in (select dc, client , max(ts) from measurements where client = '" << sender_ip << "' group by dc, client)";
       std::cerr << "executing sql1: " << sql.str() << std::endl;
       mysql_query(mysql_, sql.str().c_str());
+      std::cerr << "mysql query finished" << std::endl;
       result = mysql_store_result(mysql_);
       std::cerr << result << std::endl;
-      row = mysql_fetch_row(result);
       std::vector<LatencyDC> latencies;
-      while (row != NULL) {
-        LatencyDC dc {row[0], atoi(row[1])};
-        latencies.push_back(dc);
-        row = mysql_fetch_row(result);
-        std::cerr << "sql1: " << row << std::endl;
+      if (result) {
+          row = mysql_fetch_row(result);
+          while (row != NULL) {
+              LatencyDC dc {row[0], atoi(row[1])};
+              latencies.push_back(dc);
+              row = mysql_fetch_row(result);
+              std::cerr << "sql1: " << row << std::endl;
+          }
+      } else {
+          std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
       }
       // when no measurement query results
       if (row == NULL){
@@ -1811,10 +1816,14 @@ int Server::on_read(int fd, bool forwarded) {
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
       std::map<std::string, std::string> dcs;
-      row = mysql_fetch_row(result2);
-      while (row != NULL) {
-        dcs[row[0]] = row[1];
-        row = mysql_fetch_row(result2);
+      if (result2) {
+          row = mysql_fetch_row(result2);
+          while (row != NULL) {
+              dcs[row[0]] = row[1];
+              row = mysql_fetch_row(result2);
+          }
+      } else {
+          std::cerr << "ERROR: No data center is deployed with the server for " << h->hostname() << std::endl;
       }
       bool forwarded = false;
       if (latencies.empty()) {

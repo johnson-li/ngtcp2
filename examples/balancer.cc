@@ -1665,6 +1665,7 @@ void Server::close() {
 int Server::init(int fd, const char *user, const char *password, const char *mysql_ip) {
   fd_ = fd;
   mysql_ = mysql_connect(user, password, mysql_ip);
+  mysql_query(mysql_, "select * from clients");
 
   ev_io_set(&wev_, fd_, EV_WRITE);
   ev_io_set(&rev_, fd_, EV_READ);
@@ -1779,10 +1780,14 @@ int Server::on_read(int fd, bool forwarded) {
       auto h = std::make_unique<Handler>(loop_, ssl_ctx_, this, client_conn_id);
       h->init(fd_, &su.sa, addrlen, hd.version);
 
+      std::chrono::high_resolution_clock::time_point start_ts3 = std::chrono::high_resolution_clock::now();
       if (h->on_read(quic, nread) != 0) {
         return 0;
       }
       std::cerr << "hostname: " << h->hostname() << std::endl;
+      std::chrono::high_resolution_clock::time_point end_ts3 = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> time_span3 = end_ts3 - start_ts3;
+      std::cerr << "Parsing QUIC packet costs " << time_span3.count() << " milliseconds." << std::endl;
 
       MYSQL_ROW row = NULL;
       MYSQL_RES *result, *result2, *result3;
@@ -1790,8 +1795,9 @@ int Server::on_read(int fd, bool forwarded) {
 
       // select balancer
       sql.str("");
-      sql << "select dc, latency from measurements where (dc, client, ts) in (select dc, client , max(ts) from measurements where client = '" << sender_ip << "' group by dc, client)";
+      sql << "select dc, latency from measurements where id in (select max(id) from measurements where client = '" << sender_ip << "' group by dc, client)";
       std::cerr << "executing sql1: " << sql.str() << std::endl;
+      std::chrono::high_resolution_clock::time_point start_ts1 = std::chrono::high_resolution_clock::now();
       mysql_query(mysql_, sql.str().c_str());
       std::cerr << "mysql query finished" << std::endl;
       result = mysql_store_result(mysql_);
@@ -1808,6 +1814,9 @@ int Server::on_read(int fd, bool forwarded) {
       } else {
           std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
       }
+      std::chrono::high_resolution_clock::time_point end_ts1 = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> time_span1 = end_ts1 - start_ts1;
+      std::cerr << "Executing sql 1 costs " << time_span1.count() << " milliseconds." << std::endl;
       // when no measurement query results
       if (row == NULL){
           std::cerr << "sql1 == null: " << row << std::endl;
@@ -1816,6 +1825,7 @@ int Server::on_read(int fd, bool forwarded) {
       sql.str("");
       sql << "select datacenter, loadbalancer from deployment where domain = '" << h->hostname() << "'";
       std::cerr << "executing sql2: " << sql.str() << std::endl;
+      std::chrono::high_resolution_clock::time_point start_ts2 = std::chrono::high_resolution_clock::now();
       mysql_query(mysql_, sql.str().c_str());
       result2 = mysql_store_result(mysql_);
       std::map<std::string, std::string> dcs;
@@ -1828,6 +1838,9 @@ int Server::on_read(int fd, bool forwarded) {
       } else {
           std::cerr << "ERROR: No data center is deployed with the server for " << h->hostname() << std::endl;
       }
+      std::chrono::high_resolution_clock::time_point end_ts2 = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> time_span2 = end_ts2 - start_ts2;
+      std::cerr << "Executing sql 2 costs " << time_span2.count() << " milliseconds." << std::endl;
       bool forwarded = false;
       if (latencies.empty()) {
         // std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
@@ -1845,7 +1858,7 @@ int Server::on_read(int fd, bool forwarded) {
         std::map<std::string, int>::iterator iter;
         iter = server_fd_map_.begin();
         while(iter != server_fd_map_.end()) {
-            std::cout << iter->first << " : " << iter->second << std::endl;
+            std::cerr << iter->first << " : " << iter->second << std::endl;
             iter++;
         }
         auto fd = server_fd_map_["server"];
@@ -1889,14 +1902,11 @@ int Server::on_read(int fd, bool forwarded) {
             perror("Failed to forward ip packet");
           } else {
             std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
-            std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
-            std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
           }
         } else {
           std::cerr << "The current dc is the best, choose server to forward" << std::endl; 
           // select server
-          sql.str("");
+          /*sql.str("");
           sql << "select server from intra where domain = '" << h->hostname() << "' and datacenter = '" << ldc.dc.c_str() << "'";
           std::cerr << "executing sql: " << sql.str() << std::endl;
           mysql_query(mysql_, sql.str().c_str());
@@ -1909,7 +1919,8 @@ int Server::on_read(int fd, bool forwarded) {
             row = mysql_fetch_row(result);
           }
 //          auto server = servers[std::rand() % servers.size()];
-          auto server = servers[0];
+          auto server = servers[0]; */
+          std::string server = "server";
           std::cerr << "selected server: " << server << std::endl;
           mysql_free_result(result);
 
@@ -1919,14 +1930,14 @@ int Server::on_read(int fd, bool forwarded) {
             perror("Failed to forward ip packet");
           } else {
             std::cerr << "Forwarded to server: " << server << std::endl;
-            std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
-            std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
           }
         }
         break;
       }
       std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
+      std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
+      std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
 
       if (!forwarded) {
         std::cerr << "Failed to find server/balancer to forward" << std::endl;

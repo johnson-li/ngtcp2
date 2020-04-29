@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+
 #include <openssl/bio.h>
 #include <openssl/err.h>
 
@@ -1707,6 +1708,8 @@ int Server::on_read(int fd, bool forwarded) {
     return 0;
   }
 
+  std::chrono::high_resolution_clock::time_point start_ts = std::chrono::high_resolution_clock::now();
+
   if (debug::packet_lost(config.rx_loss_prob)) {
     if (!config.quiet) {
       std::cerr << "** Simulated incoming packet loss **" << std::endl;
@@ -1886,6 +1889,9 @@ int Server::on_read(int fd, bool forwarded) {
             perror("Failed to forward ip packet");
           } else {
             std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
+            std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
+            std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
           }
         } else {
           std::cerr << "The current dc is the best, choose server to forward" << std::endl; 
@@ -1913,6 +1919,9 @@ int Server::on_read(int fd, bool forwarded) {
             perror("Failed to forward ip packet");
           } else {
             std::cerr << "Forwarded to server: " << server << std::endl;
+            std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
+            std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
           }
         }
         break;

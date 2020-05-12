@@ -1858,11 +1858,15 @@ int Server::on_read(int fd, bool forwarded) {
         std::map<std::string, int>::iterator iter;
         iter = server_fd_map_.begin();
         while(iter != server_fd_map_.end()) {
+            std::cerr << "server_fd_map_" << std::endl;
             std::cerr << iter->first << " : " << iter->second << std::endl;
             iter++;
         }
         auto fd = server_fd_map_["server"];
         std::cerr << "fd: " << fd << std::endl;
+        std::cerr << "iph" << iph << std::endl;
+        std::cerr << "ntohs" << iph->tot_len << std::endl;
+        std::cerr << "sa" << sa << std::endl;
         forwarded = true;
         if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
           perror("Failed to forward ip packet");

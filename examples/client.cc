@@ -942,7 +942,7 @@ int Client::read_tls() {
 
 int Client::feed_data(uint8_t *data, size_t datalen) {
   int rv;
-
+  
   rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());
   if (rv != 0) {
     std::cerr << "ngtcp2_conn_recv: " << ngtcp2_strerror(rv) << std::endl;

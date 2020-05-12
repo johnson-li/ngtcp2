@@ -1218,7 +1218,13 @@ ssize_t Handler::decrypt_data(uint8_t *dest, size_t destlen,
 
 int Handler::feed_data(uint8_t *data, size_t datalen) {
   int rv;
-
+  uint8_t *q=data;
+  for (size_t i=0;i<datalen;i++)
+  {
+      std::cout<<unsigned(*q)<<',';
+      q++;
+  }
+  std::cout<<std::endl;
   rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());
   if (rv != 0) {
     std::cerr << "ngtcp2_conn_recv: " << ngtcp2_strerror(rv) << std::endl;

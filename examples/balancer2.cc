@@ -1665,7 +1665,7 @@ void Server::close() {
 int Server::init(int fd, const char *user, const char *password, const char *mysql_ip) {
   fd_ = fd;
   mysql_ = mysql_connect(user, password, mysql_ip);
-  mysql_query(mysql_, "select * from clients");
+  //mysql_query(mysql_, "select * from clients");
 
   ev_io_set(&wev_, fd_, EV_WRITE);
   ev_io_set(&rev_, fd_, EV_READ);
@@ -1738,6 +1738,7 @@ int Server::on_read(int fd, bool forwarded) {
   }
   std::cerr << "Got packet of size: " << udp_size << " from " << sender_ip << std::endl;
 
+  /*
   rv = ngtcp2_pkt_decode_hd(&hd, quic, nread);
   if (rv < 0) {
     std::cerr << "Could not decode QUIC packet header: " << ngtcp2_strerror(rv)
@@ -1788,6 +1789,7 @@ int Server::on_read(int fd, bool forwarded) {
       std::chrono::high_resolution_clock::time_point end_ts3 = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::milli> time_span3 = end_ts3 - start_ts3;
       std::cerr << "Parsing QUIC packet costs " << time_span3.count() << " milliseconds." << std::endl;
+      */
 
       MYSQL_ROW row = NULL;
       MYSQL_RES *result, *result2, *result3;
@@ -1805,7 +1807,11 @@ int Server::on_read(int fd, bool forwarded) {
       std::vector<LatencyDC> latencies;
       if (result) {
           row = mysql_fetch_row(result);
+          if (row == NULL) {
+            std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
+          }
           while (row != NULL) {
+              std::cerr << "Got measurement result: " << row[0] << " " << row[1] << std::endl;
               LatencyDC dc {row[0], atoi(row[1])};
               latencies.push_back(dc);
               row = mysql_fetch_row(result);
@@ -1822,8 +1828,9 @@ int Server::on_read(int fd, bool forwarded) {
           std::cerr << "sql1 == null: " << row << std::endl;
       }
       std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
+      /*
       sql.str("");
-      sql << "select datacenter, loadbalancer from deployment where domain = '" << h->hostname() << "'";
+      sql << "select datacenter, loadbalancer from deployment where domain = '" << "serviceid.xuebing.li" << "'";
       std::cerr << "executing sql2: " << sql.str() << std::endl;
       std::chrono::high_resolution_clock::time_point start_ts2 = std::chrono::high_resolution_clock::now();
       mysql_query(mysql_, sql.str().c_str());
@@ -1836,18 +1843,14 @@ int Server::on_read(int fd, bool forwarded) {
               row = mysql_fetch_row(result2);
           }
       } else {
-          std::cerr << "ERROR: No data center is deployed with the server for " << h->hostname() << std::endl;
+          std::cerr << "ERROR: No data center is deployed with the server for " << "serviceid.xuebing.li" << std::endl;
       }
       std::chrono::high_resolution_clock::time_point end_ts2 = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::milli> time_span2 = end_ts2 - start_ts2;
       std::cerr << "Executing sql 2 costs " << time_span2.count() << " milliseconds." << std::endl;
-      bool forwarded = false;
+      */
+      bool packet_forwarded = false;
       if (latencies.empty()) {
-        // std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
-        // // scheme 1
-        // LatencyDC dc {"server", 1};
-        // latencies.push_back(dc);
-
         // scheme 2
         struct sockaddr_in sa;
         memset(&sa, 0, sizeof(sa));
@@ -1867,7 +1870,7 @@ int Server::on_read(int fd, bool forwarded) {
         std::cerr << "iph:" << iph << std::endl;
         std::cerr << "ntohs:" << ntohs(iph->tot_len) << std::endl;
         std::cerr << "sa:" << &sa << std::endl;
-        forwarded = true;
+        packet_forwarded = true;
         if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
           perror("Failed to forward ip packet");
         } else {
@@ -1888,20 +1891,20 @@ int Server::on_read(int fd, bool forwarded) {
         if (ldc.latency <= 0) {
           continue;
         }
-        if (dcs.find(ldc.dc) == dcs.end()) {
+        /*if (dcs.find(ldc.dc) == dcs.end()) {
           std::cerr << "dcs.find(ldc.dc) == dcs.end()" << std::endl;
           continue;
-        }
+        }*/
         struct sockaddr_in sa;
         memset(&sa, 0, sizeof(sa));
         sa.sin_family = AF_INET;
         sa.sin_port = udph->dest;
         sa.sin_addr.s_addr = iph->daddr;
-        if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
+        if (!forwarded && strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
           std::cerr << "The current dc is not the best, forward the packet to ldc: " << ldc.dc.c_str() << std::endl; 
-          auto interface = dcs[ldc.dc];
+          auto interface = ldc.dc;
           auto fd = balancer_fd_map_[interface];
-          forwarded = true;
+          packet_forwarded = true;
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
@@ -1929,7 +1932,7 @@ int Server::on_read(int fd, bool forwarded) {
           mysql_free_result(result);
 
           auto fd = server_fd_map_[server];
-          forwarded = true;
+          packet_forwarded = true;
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
@@ -1943,14 +1946,14 @@ int Server::on_read(int fd, bool forwarded) {
       std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
       std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
 
-      if (!forwarded) {
+      if (!packet_forwarded) {
         std::cerr << "Failed to find server/balancer to forward" << std::endl;
       }
 
       //mysql_free_result(result);
       mysql_free_result(result2);
 
-      rv = h->on_write();
+      /*rv = h->on_write();
       switch (rv) {
       case 0:
         break;
@@ -1964,7 +1967,8 @@ int Server::on_read(int fd, bool forwarded) {
       conn_id = h->conn_id();
       handlers_.emplace(conn_id, std::move(h));
       ctos_.emplace(client_conn_id, conn_id);
-      return 0;
+      return 0;*/
+      /*
     }
     if (!config.quiet) {
       debug::print_timestamp();
@@ -1974,8 +1978,9 @@ int Server::on_read(int fd, bool forwarded) {
     handler_it = handlers_.find((*ctos_it).second);
     assert(handler_it != std::end(handlers_));
   }
+  */
 
-  auto h = (*handler_it).second.get();
+  /*auto h = (*handler_it).second.get();
   if (ngtcp2_conn_in_closing_period(h->conn())) {
     // TODO do exponential backoff.
     rv = h->send_conn_close();
@@ -2021,7 +2026,7 @@ int Server::on_read(int fd, bool forwarded) {
     h->handle_error(0);
 
     remove(it);
-  }
+  }*/
   return 0;
 }
 

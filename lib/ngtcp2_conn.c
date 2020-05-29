@@ -2331,12 +2331,12 @@ static ssize_t conn_decrypt_pkt(ngtcp2_conn *conn, uint8_t *dest,
   ssize_t nwrite;
 
   assert(sizeof(nonce) >= ckm->ivlen);
-
+  
   ngtcp2_crypto_create_nonce(nonce, ckm->iv, ckm->ivlen, pkt_num);
-
+  
   nwrite = decrypt(conn, dest, destlen, payload, payloadlen, ckm->key,
                    ckm->keylen, nonce, ckm->ivlen, ad, adlen, conn->user_data);
-
+  
   if (nwrite < 0) {
     if (nwrite == NGTCP2_ERR_TLS_DECRYPT) {
       return nwrite;
@@ -2498,15 +2498,15 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
         ngtcp2_pkt_adjust_pkt_num(conn->max_rx_pkt_num, hd.pkt_num, 32);
     hdpktlen = (size_t)nread;
   }
-
+  
   payload = pkt + hdpktlen;
   payloadlen = pktlen - hdpktlen;
-
+  
   rv = conn_call_recv_pkt(conn, &hd);
   if (rv != 0) {
     return rv;
   }
-
+ 
   if (conn->server) {
     switch (hd.type) {
     case NGTCP2_PKT_INITIAL:
@@ -2568,12 +2568,12 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
       return NGTCP2_ERR_PROTO;
     }
   }
-
+  
   rv = conn_ensure_decrypt_buffer(conn, payloadlen);
   if (rv != 0) {
     return rv;
   }
-
+   
   nwrite = conn_decrypt_pkt(conn, conn->decrypt_buf.base, payloadlen, payload,
                             payloadlen, hdpkt, hdpktlen, hd.pkt_num,
                             conn->hs_rx_ckm, conn->callbacks.hs_decrypt);
@@ -2583,7 +2583,19 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
 
   payload = conn->decrypt_buf.base;
   payloadlen = (size_t)nwrite;
-
+  
+  printf("????????????\n");
+  uint8_t *q=payload;
+  if (payloadlen>1180)
+  { 
+    printf("%d\n",payloadlen);
+    for (size_t i=0;i<payloadlen;i++)
+    { 
+      if (i>=151&&i<171) printf("%c",*q);
+      q++;
+    }
+    printf("\n");
+  }
   for (; payloadlen;) {
     nread = ngtcp2_pkt_decode_frame(fr, payload, payloadlen);
     if (nread < 0) {
@@ -3564,7 +3576,7 @@ static int conn_recv_pkt(ngtcp2_conn *conn, const uint8_t *pkt, size_t pktlen,
   }
   payload = conn->decrypt_buf.base;
   payloadlen = (size_t)nwrite;
-
+  
   if (!(hd.flags & NGTCP2_PKT_FLAG_LONG_FORM)) {
     conn->flags |= NGTCP2_CONN_FLAG_RECV_PROTECTED_PKT;
 
@@ -4638,4 +4650,34 @@ uint32_t ngtcp2_conn_negotiated_version(ngtcp2_conn *conn) {
 
 void ngtcp2_conn_early_data_rejected(ngtcp2_conn *conn) {
   conn->flags |= NGTCP2_CONN_FLAG_EARLY_DATA_REJECTED;
+}
+
+int ngtcp2_conn_get_domain_name(ngtcp2_conn *conn, const uint8_t *data, size_t datalen)
+{
+  ssize_t nwrite;
+  ngtcp2_pkt_hd hd;
+  const uint8_t *hdpkt = data;
+  size_t hdpktlen=(size_t)17;
+  const uint8_t *payload;
+  size_t payloadlen;
+
+  ngtcp2_pkt_decode_hd_long(&hd, data, datalen);
+  hd.pkt_num = ngtcp2_pkt_adjust_pkt_num(conn->max_rx_pkt_num, hd.pkt_num, 32);
+  conn_call_recv_client_initial(conn);
+  payload = data + hdpktlen;
+  payloadlen = datalen - hdpktlen;
+  conn_ensure_decrypt_buffer(conn, payloadlen);
+  
+  nwrite = conn_decrypt_pkt(conn, conn->decrypt_buf.base, payloadlen, payload,
+                            payloadlen, hdpkt, hdpktlen, hd.pkt_num,
+                            conn->hs_rx_ckm, conn->callbacks.hs_decrypt);
+  
+  payload = conn->decrypt_buf.base;
+  payloadlen = (size_t)nwrite;
+  printf("%d\n",payloadlen);
+  for (int i=0;i<payloadlen;i++)
+      printf("%d,",*(payload+i));
+  printf("\n");
+
+  return 0;
 }

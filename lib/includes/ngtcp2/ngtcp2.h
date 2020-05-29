@@ -945,6 +945,7 @@ NGTCP2_EXTERN void ngtcp2_conn_del(ngtcp2_conn *conn);
 NGTCP2_EXTERN int ngtcp2_conn_recv(ngtcp2_conn *conn, const uint8_t *pkt,
                                    size_t pktlen, ngtcp2_tstamp ts);
 
+NGTCP2_EXTERN int ngtcp2_conn_get_domain_name(ngtcp2_conn *conn, const uint8_t *data, size_t datalen);
 /*
  * @function
  *

@@ -650,7 +650,7 @@ ssize_t do_hs_decrypt(ngtcp2_conn *conn, uint8_t *dest, size_t destlen,
                       size_t noncelen, const uint8_t *ad, size_t adlen,
                       void *user_data) {
   auto h = static_cast<Handler *>(user_data);
-
+  std::cout<<"decrypt ok"<<std::endl;
   auto nwrite = h->hs_decrypt_data(dest, destlen, ciphertext, ciphertextlen,
                                    key, keylen, nonce, noncelen, ad, adlen);
   if (nwrite < 0) {
@@ -1218,13 +1218,17 @@ ssize_t Handler::decrypt_data(uint8_t *dest, size_t destlen,
 
 int Handler::feed_data(uint8_t *data, size_t datalen) {
   int rv;
-  uint8_t *q=data;
-  for (size_t i=0;i<datalen;i++)
+  ssize_t nwrite;
+  uint32_t pkt_num;
+  uint8_t *payload;
+  size_t payloadlen;
+  ngtcp2_conn *conn=conn_;
+  if (*data==255)
   {
-      std::cout<<unsigned(*q)<<',';
-      q++;
+    ngtcp2_conn_get_domain_name(conn_, data, datalen);
+    
   }
-  std::cout<<std::endl;
+  std::cout<<"ok"<<std::endl;
   rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());
   if (rv != 0) {
     std::cerr << "ngtcp2_conn_recv: " << ngtcp2_strerror(rv) << std::endl;

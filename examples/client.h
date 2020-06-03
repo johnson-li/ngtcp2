@@ -203,6 +203,7 @@ public:
   void handle_early_data();
   virtual int OnMigration(uint32_t peer_address);
   int fd2() { return fd2_; }
+  int send_http_resq(uint64_t stream_id, char *url);
 
 private:
   Address remote_addr_;
@@ -224,7 +225,7 @@ private:
   sockaddr_in dest_addr2_;
   bool migrated_;
   int datafd_;
-  std::map<uint32_t, std::unique_ptr<Stream>> streams_;
+  std::map<uint32_t, std::shared_ptr<Stream>> streams_;
   std::deque<Buffer> chandshake_;
   // chandshake_idx_ is the index in chandshake_, which points to the
   // buffer to read next.

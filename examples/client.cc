@@ -29,6 +29,8 @@
 #include <algorithm>
 #include <memory>
 #include <fstream>
+#include <sstream>  
+#include <string>  
 
 #include <unistd.h>
 #include <getopt.h>
@@ -48,6 +50,14 @@
 #include "util.h"
 #include "crypto.h"
 #include "shared.h"
+
+// for http response parser
+#include "http.h"
+#include <http-parser/http_parser.h>
+// for http dom parser
+#include "lexbor/html/html.h"
+#include "lexbor/core/fs.h"
+#include <lexbor/dom/interfaces/element.h>
 
 using namespace ngtcp2;
 
@@ -445,6 +455,174 @@ int recv_stream0_data(ngtcp2_conn *conn, const uint8_t *data, size_t datalen,
 } // namespace
 
 namespace {
+http_parser htp;
+std::map<uint32_t, std::shared_ptr<Stream>> *streams2_;
+#define MAX_ELEMENT_SIZE 500000
+
+struct message {
+  char body[MAX_ELEMENT_SIZE];
+  int body_len;
+  uint64_t stream_id;
+  std::map<uint32_t, std::shared_ptr<Stream>> *streams_;
+  ngtcp2_conn *conn_;
+
+  int message_complete_cb_called;
+};
+static struct message messages[50];
+static int num_messages;
+
+int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_conn *conn_, char *url) {
+  // open new stream for resourse requests
+  uint64_t stream_id;
+  int rv = ngtcp2_conn_open_bidi_stream(conn_, &stream_id, nullptr);
+  if (rv != 0) {
+    std::cerr << "ngtcp2_conn_open_bidi_stream: " << ngtcp2_strerror(rv)
+              << std::endl;
+    if (rv == NGTCP2_ERR_STREAM_ID_BLOCKED) {
+      return 0;
+    }
+    return -1;
+  }
+  // std::cerr << "2 The stream " << stream_id << " has opened." << std::endl;
+
+  // generate stream content
+  auto stream = std::make_unique<Stream>(stream_id);
+  std::string req = "GET /examples/resource/" + std::string(url).substr(2) +  " HTTP/1.1\r\n\r\n";
+  std::cerr << url << std::endl;
+  auto v = Buffer{req.size()};
+  auto p = std::begin(v.buf);
+  p = std::copy(std::begin(req), std::end(req), p);
+  v.push(std::distance(std::begin(v.buf), p));
+
+  stream->streambuf.emplace_back(std::move(v));
+  stream->should_send_fin = true;
+  (*streams_).emplace(stream_id, std::move(stream));
+
+  std::cerr << "2 send resq!!!" << std::endl << std::endl;
+  return 0;
+}
+
+
+int http_req_resourse (std::map<uint32_t, std::shared_ptr<Stream>> *streams_, ngtcp2_conn *conn_, char *body) {
+    lxb_status_t status;
+    lxb_dom_attr_t *attr;
+    lxb_dom_node_t *node;
+    const lxb_char_t *value;
+    lxb_html_document_t *document;
+    lxb_dom_collection_t *collection;
+
+    // std::cout << strlen(body) << std::endl;
+    lxb_char_t *data = (lxb_char_t *) body;
+    size_t length = strlen(body);
+    if (data == NULL) {
+        std::cerr << "No data receive"  << std::endl;   
+    }
+
+    document = lxb_html_document_create();
+    if (document == NULL) {
+        std::cerr << "Failed to create document object"  << std::endl;   
+    }
+
+    status = lxb_html_document_parse(document, data, length);
+    if (status != LXB_STATUS_OK) {
+        std::cerr << "Failed to parse HTML"  << std::endl;   
+    }
+    // lexbor_free(data);
+
+    collection = lxb_dom_collection_create(&document->dom_document);
+    status = lxb_dom_collection_init(collection, 128);
+    if (status != LXB_STATUS_OK) {
+        std::cerr << "Failed to create collection object"  << std::endl;   
+    }
+
+    node = lxb_dom_interface_node(document->body);
+    status = lxb_dom_elements_by_attr_begin(lxb_dom_interface_element(node),
+                                            collection, 
+                                            (lxb_char_t *) "src", 3,
+                                            (lxb_char_t *) "./", 2, 
+                                            true);
+    for (size_t i = 0; i < lxb_dom_collection_length(collection); i++) {
+        node = lxb_dom_collection_node(collection, i);
+        attr = lxb_dom_element_attr_by_name(lxb_dom_interface_element(node),
+                                            (lxb_char_t *) "src", 3);
+
+        if (attr != NULL) {
+            value = lxb_dom_attr_value(attr, NULL);
+
+            if (value != NULL) {
+                http_resq(streams_, conn_, (char *) value);
+            }
+        }
+    }
+
+    lxb_html_document_destroy(document);
+
+    return 0;
+}
+}
+
+
+namespace {
+int body_cb (http_parser *parser, const char *p, size_t len) {
+  if (messages[num_messages].message_complete_cb_called != 1){
+    strncat(messages[num_messages].body, p, len);
+    messages[num_messages].body_len = messages[num_messages].body_len + len;
+  }
+  return 0;
+}
+
+int message_complete_cb (http_parser *parser) {
+  // std::cerr << "num_messages body " << messages[num_messages].body_len  << std::endl;   
+  // std::cerr << "num_messages body " << messages[num_messages].body  << std::endl; 
+  if (messages[num_messages].message_complete_cb_called != 1){
+    if (http_req_resourse(messages[num_messages].streams_, messages[num_messages].conn_, messages[num_messages].body) != 0){
+      return 1;
+    }
+  }
+  messages[num_messages].message_complete_cb_called = 1;
+  // debug::print_timestamp();
+  auto t = debug::ts(start_ts[messages[num_messages].conn_]).count();
+  std::cerr << "PLT(pls use the last print record): " << t <<  " microseconds" <<  std::endl;
+
+  // num_messages++;
+  return 0;
+}
+
+
+
+auto htp_settings = http_parser_settings{
+    nullptr,             // on_message_begin
+    nullptr,             // on_url
+    nullptr,             // on_status
+    nullptr,             // on_header_field
+    nullptr,             // on_header_value
+    nullptr,             // on_headers_complete
+    body_cb,             // on_body
+    message_complete_cb, // on_message_complete
+    nullptr,             // on_chunk_header,
+    nullptr,             // on_chunk_complete
+};
+}
+
+
+namespace {
+int recv_data(uint8_t fin, const uint8_t *data, size_t datalen) {
+  auto nread = http_parser_execute(
+      &htp, &htp_settings, reinterpret_cast<const char *>(data), datalen);
+
+  if (htp.upgrade) {
+    /* handle new protocol */
+  } else if (nread != datalen) {
+      std::cerr << "recv_error"  << std::endl;
+    return -1;
+  }
+
+  return 0;
+}
+}
+
+
+namespace {
 int recv_stream_data(ngtcp2_conn *conn, uint64_t stream_id, uint8_t fin,
                      const uint8_t *data, size_t datalen, void *user_data,
                      void *stream_user_data) {
@@ -455,6 +633,18 @@ int recv_stream_data(ngtcp2_conn *conn, uint64_t stream_id, uint8_t fin,
   std::cerr << "transfer time: " << t << std::endl;
   ngtcp2_conn_extend_max_stream_offset(conn, stream_id, datalen);
   ngtcp2_conn_extend_max_offset(conn, datalen);
+
+  // http parse
+  if (recv_data(fin, data, datalen) != 0) {
+    int rv;
+    rv = ngtcp2_conn_shutdown_stream(conn, stream_id, NGTCP2_APP_PROTO);
+    if (rv != 0) {
+      std::cerr << "ngtcp2_conn_shutdown_stream: " << ngtcp2_strerror(rv)
+                << std::endl;
+      return -1;
+    }
+  }
+
   return 0;
 }
 } // namespace
@@ -483,6 +673,10 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
 
+  // http parse init
+  num_messages = 0;
+  http_parser_init(&htp, HTTP_RESPONSE);
+  
   return 0;
 }
 } // namespace
@@ -1358,10 +1552,12 @@ int Client::start_interactive_input() {
 
   last_stream_id_ = stream_id;
 
-  auto stream = std::make_unique<Stream>(stream_id);
+  // auto stream = std::make_unique<Stream>(stream_id);
 
-  streams_.emplace(stream_id, std::move(stream));
+  // streams_.emplace(stream_id, std::move(stream));
 
+  send_http_resq(stream_id, (char *) "/examples/resource/Google_files");
+  
   return 0;
 }
 
@@ -1607,6 +1803,27 @@ int Client::on_extend_max_stream_id(uint64_t max_stream_id) {
     return 0;
   }
 
+  return 0;
+}
+
+
+int Client::send_http_resq(uint64_t stream_id, char *url) {
+  auto stream = std::make_unique<Stream>(stream_id);
+  std::string req = "GET " + std::string(url) +  "/index.html HTTP/1.1\r\n\r\n";
+  auto v = Buffer{req.size()};
+  auto p = std::begin(v.buf);
+  p = std::copy(std::begin(req), std::end(req), p);
+  v.push(std::distance(std::begin(v.buf), p));
+
+  stream->streambuf.emplace_back(std::move(v));
+  stream->should_send_fin = true;
+  streams_.emplace(stream_id, std::move(stream));
+
+  // set connection info into message
+  messages[num_messages].streams_ = &streams_;
+  messages[num_messages].conn_ = conn_;
+
+  std::cerr << "1 send resq!!!" << std::endl;
   return 0;
 }
 

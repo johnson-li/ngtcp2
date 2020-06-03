@@ -403,6 +403,7 @@ int Stream::start_response() {
   http_minor = htp.http_minor;
 
   auto req_path = request_path(uri, htp.method == HTTP_CONNECT);
+  std::cerr << req_path << std::endl;
   auto path = resolve_path(req_path);
   if (path.empty() || open_file(path) != 0) {
     send_status_response(404);
@@ -445,6 +446,7 @@ int Stream::start_response() {
       hdr += "\r\n";
     }
     hdr += "\r\n";
+    std::cerr << hdr << std::endl;
 
     auto v = Buffer{hdr.size()};
     auto p = std::begin(v.buf);
@@ -611,7 +613,7 @@ int handshake_completed(ngtcp2_conn *conn, void *user_data) {
   }
 
   debug::print_timestamp();
-  h->send_greeting();
+  // h->send_greeting();
 
   int rv = h->on_write();
   switch (rv) {

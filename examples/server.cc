@@ -1227,7 +1227,7 @@ int Handler::feed_data(uint8_t *data, size_t datalen) {
   ngtcp2_conn *conn=conn_;
   if (*data==255)
   {
-    ngtcp2_conn_get_domain_name(conn_, data, datalen);
+    //ngtcp2_conn_get_domain_name(conn_, data, datalen);
     
   }
   std::cout<<"ok"<<std::endl;

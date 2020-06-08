@@ -251,6 +251,8 @@ struct ngtcp2_conn {
   uint8_t immediate_ack;
   /* decrypt_buf is a buffer which is used to write decrypted data. */
   ngtcp2_array decrypt_buf;
+  //uint8_t *domain_name;
+  //size_t domain_len;
 };
 
 /*

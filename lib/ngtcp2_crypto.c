@@ -255,7 +255,8 @@ int ngtcp2_decode_transport_params(ngtcp2_transport_params *params,
 
   p = data;
   end = data + datalen;
-
+  printf("data start %u %u %u\n",*data,*(data+1),*(data+2));
+  printf("datalen %d\n",datalen);
   switch (exttype) {
   case NGTCP2_TRANSPORT_PARAMS_TYPE_CLIENT_HELLO:
     if ((size_t)(end - p) < sizeof(uint32_t)) {

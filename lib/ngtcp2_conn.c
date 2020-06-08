@@ -26,7 +26,7 @@
 
 #include <string.h>
 #include <assert.h>
-
+#include <time.h>
 #include "ngtcp2_ppe.h"
 #include "ngtcp2_macro.h"
 
@@ -2464,6 +2464,8 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
   const uint8_t *payload;
   size_t payloadlen;
   ssize_t nwrite;
+  clock_t t1,t2;
+  t1=clock();
 
   if (!(pkt[0] & NGTCP2_HEADER_FORM_BIT)) {
     if (conn->state == NGTCP2_CS_SERVER_INITIAL) {
@@ -2573,7 +2575,8 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
   if (rv != 0) {
     return rv;
   }
-   
+  t2=clock();
+  printf("time before decrypt %.2lf\n",1000.0*(t2-t1)/CLOCKS_PER_SEC);
   nwrite = conn_decrypt_pkt(conn, conn->decrypt_buf.base, payloadlen, payload,
                             payloadlen, hdpkt, hdpktlen, hd.pkt_num,
                             conn->hs_rx_ckm, conn->callbacks.hs_decrypt);
@@ -2584,7 +2587,8 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
   payload = conn->decrypt_buf.base;
   payloadlen = (size_t)nwrite;
   
-  printf("????????????\n");
+  t2=clock();
+  printf("time after decrypt %.2lf\n",1000.0*(t2-t1)/CLOCKS_PER_SEC);
   uint8_t *q=payload;
   if (payloadlen>1180)
   { 
@@ -2596,6 +2600,8 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
     }
     printf("\n");
   }
+  //conn->domain_name = *(payload+151);
+  //conn->domain_len = 20;
   for (; payloadlen;) {
     nread = ngtcp2_pkt_decode_frame(fr, payload, payloadlen);
     if (nread < 0) {
@@ -2742,6 +2748,8 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
   if (rv != 0) {
     return rv;
   }
+  t2=clock();
+  printf("final time %.2lf\n",1000.0*(t2-t1)/CLOCKS_PER_SEC);
 
   return handshake_failed ? NGTCP2_ERR_TLS_HANDSHAKE : 0;
 }

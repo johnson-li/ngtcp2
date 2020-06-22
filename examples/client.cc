@@ -1054,7 +1054,7 @@ int Client::tls_handshake(bool initial) {
       }
     }
   }
-
+  
   rv = SSL_do_handshake(ssl_);
   if (!initial && resumption_) {
     if (SSL_get_early_data_status(ssl_) != SSL_EARLY_DATA_ACCEPTED) {
@@ -2097,7 +2097,7 @@ void config_set_default(Config &config) {
   config.data = nullptr;
   config.datalen = 0;
   config.version = NGTCP2_PROTO_VER_D8;
-  config.timeout = 30;
+  config.timeout = 300;
 }
 } // namespace
 

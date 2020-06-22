@@ -1873,6 +1873,11 @@ int Server::on_read(int fd, bool forwarded) {
         } else {
           std::cerr << "Forwarded to local dc: "<< std::endl;
         }
+        if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+          perror("second Failed to forward ip packet");
+        } else {
+          std::cerr << "second Forwarded to local dc: "<< std::endl;
+        }
       }
       /*
       std::cerr << "=====latency info START=====" << std::endl;
@@ -1907,6 +1912,11 @@ int Server::on_read(int fd, bool forwarded) {
           } else {
             std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
           }
+          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+            perror("Failed to forward ip packet");
+          } else {
+            std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
+          }
         } else {
           std::cerr << "The current dc is the best, choose server to forward" << std::endl; 
           // select server
@@ -1930,6 +1940,11 @@ int Server::on_read(int fd, bool forwarded) {
 
           auto fd = server_fd_map_[server];
           forwarded = true;
+          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+            perror("Failed to forward ip packet");
+          } else {
+            std::cerr << "Forwarded to server: " << server << std::endl;
+          }
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {

@@ -1888,8 +1888,16 @@ int Server::on_read(int fd, bool forwarded) {
       */
         
       std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
+      auto count_latencies = 0;
       for (auto ldc : latencies) {
         std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
+        std::cerr << "count_latencies: " << count_latencies << std::endl;
+
+        count_latencies++;
+        if (count_latencies >= 2) {
+            break;
+        }
+
         if (ldc.latency <= 0) {
           continue;
         }
@@ -1951,7 +1959,7 @@ int Server::on_read(int fd, bool forwarded) {
             std::cerr << "Forwarded to server: " << server << std::endl;
           }
         }
-        break;
+//        break;
       }
       std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
       std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();

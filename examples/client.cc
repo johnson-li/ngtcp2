@@ -465,13 +465,16 @@ struct message {
   uint64_t stream_id;
   std::map<uint32_t, std::shared_ptr<Stream>> *streams_;
   ngtcp2_conn *conn_;
+  std::string prefix;
 
   int message_complete_cb_called;
 };
 static struct message messages[50];
 static int num_messages;
+// is_file：控制index.csv是否已经被遍历
+static int is_file;
 
-int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_conn *conn_, char *url) {
+int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_conn *conn_, const std::string&  req) {
   // open new stream for resourse requests
   uint64_t stream_id;
   int rv = ngtcp2_conn_open_bidi_stream(conn_, &stream_id, nullptr);
@@ -483,12 +486,10 @@ int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_con
     }
     return -1;
   }
-  // std::cerr << "2 The stream " << stream_id << " has opened." << std::endl;
 
   // generate stream content
   auto stream = std::make_unique<Stream>(stream_id);
-  std::string req = "GET /examples/resource/" + std::string(url).substr(2) +  " HTTP/1.1\r\n\r\n";
-  std::cerr << url << std::endl;
+  std::cerr << req << std::endl;
   auto v = Buffer{req.size()};
   auto p = std::begin(v.buf);
   p = std::copy(std::begin(req), std::end(req), p);
@@ -497,13 +498,11 @@ int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_con
   stream->streambuf.emplace_back(std::move(v));
   stream->should_send_fin = true;
   (*streams_).emplace(stream_id, std::move(stream));
-
-  std::cerr << "2 send resq!!!" << std::endl << std::endl;
   return 0;
 }
 
 
-int http_req_resourse (std::map<uint32_t, std::shared_ptr<Stream>> *streams_, ngtcp2_conn *conn_, char *body) {
+int http_req_resourse (std::map<uint32_t, std::shared_ptr<Stream>> *streams_, ngtcp2_conn *conn_, std::string& prefix, char *body) {
     lxb_status_t status;
     lxb_dom_attr_t *attr;
     lxb_dom_node_t *node;
@@ -539,8 +538,9 @@ int http_req_resourse (std::map<uint32_t, std::shared_ptr<Stream>> *streams_, ng
     status = lxb_dom_elements_by_attr_begin(lxb_dom_interface_element(node),
                                             collection, 
                                             (lxb_char_t *) "src", 3,
-                                            (lxb_char_t *) "./", 2, 
+                                            (lxb_char_t *) "", 0, 
                                             true);
+    std::cout << "==== " + prefix + " resources =====" << std::endl;
     for (size_t i = 0; i < lxb_dom_collection_length(collection); i++) {
         node = lxb_dom_collection_node(collection, i);
         attr = lxb_dom_element_attr_by_name(lxb_dom_interface_element(node),
@@ -550,7 +550,17 @@ int http_req_resourse (std::map<uint32_t, std::shared_ptr<Stream>> *streams_, ng
             value = lxb_dom_attr_value(attr, NULL);
 
             if (value != NULL) {
-                http_resq(streams_, conn_, (char *) value);
+            std::cout << value << std::endl;
+                std::string req;
+                std::string url = std::string((char *) value);
+                std::string::size_type idx = url.find("https://");
+                if (idx != std::string::npos) { 
+                  url =  prefix + "/" + url.substr(8);
+                } else {
+                  url =  prefix + "/www." + prefix + url.substr(8);
+                }
+                req = "GET /websites/" + url + " HTTP/1.1\r\n\r\n";
+                http_resq(streams_, conn_, req);
             }
         }
     }
@@ -575,7 +585,7 @@ int message_complete_cb (http_parser *parser) {
   // std::cerr << "num_messages body " << messages[num_messages].body_len  << std::endl;   
   // std::cerr << "num_messages body " << messages[num_messages].body  << std::endl; 
   if (messages[num_messages].message_complete_cb_called != 1){
-    if (http_req_resourse(messages[num_messages].streams_, messages[num_messages].conn_, messages[num_messages].body) != 0){
+    if (http_req_resourse(messages[num_messages].streams_, messages[num_messages].conn_, messages[num_messages].prefix, messages[num_messages].body) != 0){
       return 1;
     }
   }
@@ -584,7 +594,7 @@ int message_complete_cb (http_parser *parser) {
   auto t = debug::ts(start_ts[messages[num_messages].conn_]).count();
   std::cerr << "PLT(pls use the last print record): " << t <<  " microseconds" <<  std::endl;
 
-  // num_messages++;
+  num_messages++;
   return 0;
 }
 
@@ -1536,28 +1546,26 @@ int Client::start_interactive_input() {
   ev_io_set(&stdinrev_, datafd_, EV_READ);
   ev_io_start(loop_, &stdinrev_);
 
-  uint64_t stream_id;
-
-  rv = ngtcp2_conn_open_bidi_stream(conn_, &stream_id, nullptr);
-  if (rv != 0) {
-    std::cerr << "ngtcp2_conn_open_bidi_stream: " << ngtcp2_strerror(rv)
-              << std::endl;
-    if (rv == NGTCP2_ERR_STREAM_ID_BLOCKED) {
-      return 0;
+  if (!is_file){
+    // 读取index.csv中需要测试的网站
+    std::string domain_name;
+    std::ifstream fin("index.csv"); 
+    std::cout<<"index.csv"<<"--- all file is as follows:---"<<std::endl;
+    int i = 0;
+    while (getline(fin,domain_name)){
+      std::cout<<"==== index ======"<<std::endl;
+      std::string req = "GET /websites/" +  domain_name + "/www." + domain_name + "/index.html HTTP/1.1\r\n\r\n";
+      http_resq(&streams_, conn_, req);
+      // set connection info into message
+      messages[i].streams_ = &streams_;
+      messages[i].conn_ = conn_;
+      messages[i].prefix = domain_name;
+      i += 1;
     }
-    return -1;
+    fin.close();
+    is_file = 1;
   }
 
-  std::cerr << "The stream " << stream_id << " has opened." << std::endl;
-
-  last_stream_id_ = stream_id;
-
-  // auto stream = std::make_unique<Stream>(stream_id);
-
-  // streams_.emplace(stream_id, std::move(stream));
-
-  send_http_resq(stream_id, (char *) "/examples/resource/Google_files");
-  
   return 0;
 }
 
@@ -1818,10 +1826,6 @@ int Client::send_http_resq(uint64_t stream_id, char *url) {
   stream->streambuf.emplace_back(std::move(v));
   stream->should_send_fin = true;
   streams_.emplace(stream_id, std::move(stream));
-
-  // set connection info into message
-  messages[num_messages].streams_ = &streams_;
-  messages[num_messages].conn_ = conn_;
 
   std::cerr << "1 send resq!!!" << std::endl;
   return 0;

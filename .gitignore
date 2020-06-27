@@ -37,3 +37,6 @@ test-driver
 cmake-build-debug
 
 third-party/http-parser/.dirstamp
+
+# websites resource
+/websites/

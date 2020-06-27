@@ -665,9 +665,9 @@ namespace {
 int handshake_completed(ngtcp2_conn *conn, void *user_data) {
   auto c = static_cast<Client *>(user_data);
 
-  if (!config.quiet) {
+//  if (!config.quiet) {
     debug::handshake_completed(&start_ts, conn, user_data);
-  }
+ // }
 
   if (c->setup_crypto_context() != 0) {
     return NGTCP2_ERR_CALLBACK_FAILURE;

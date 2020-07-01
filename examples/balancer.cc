@@ -1873,11 +1873,11 @@ int Server::on_read(int fd, bool forwarded) {
         } else {
           std::cerr << "Forwarded to local dc: "<< std::endl;
         }
-        if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        /*if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
           perror("second Failed to forward ip packet");
         } else {
           std::cerr << "second Forwarded to local dc: "<< std::endl;
-        }
+          }*/
       }
       /*
       std::cerr << "=====latency info START=====" << std::endl;
@@ -1892,11 +1892,6 @@ int Server::on_read(int fd, bool forwarded) {
       for (auto ldc : latencies) {
         std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
         std::cerr << "count_latencies: " << count_latencies << std::endl;
-
-        count_latencies++;
-        if (count_latencies >= 2) {
-            break;
-        }
 
         if (ldc.latency <= 0) {
           continue;
@@ -1920,11 +1915,11 @@ int Server::on_read(int fd, bool forwarded) {
           } else {
             std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
           }
-          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+          /*if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
             std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
-          }
+          }*/
         } else {
           std::cerr << "The current dc is the best, choose server to forward" << std::endl; 
           // select server
@@ -1953,13 +1948,17 @@ int Server::on_read(int fd, bool forwarded) {
           } else {
             std::cerr << "Forwarded to server: " << server << std::endl;
           }
-          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+          /*if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {
             std::cerr << "Forwarded to server: " << server << std::endl;
-          }
+          }*/
         }
 //        break;
+        count_latencies++;
+        if (count_latencies >= 2) {
+            break;
+        }        
       }
       std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
       std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();

@@ -643,7 +643,7 @@ int recv_stream_data(ngtcp2_conn *conn, uint64_t stream_id, uint8_t fin,
     debug::print_stream_data(stream_id, data, datalen);
   }
   auto t = debug::ts(start_ts[conn]).count();
-  std::cerr << "transfer time: " << t << std::endl;
+  // std::cerr << "transfer time: " << t << std::endl;
   ngtcp2_conn_extend_max_stream_offset(conn, stream_id, datalen);
   ngtcp2_conn_extend_max_offset(conn, datalen);
 
@@ -1514,7 +1514,7 @@ int Client::send_packet(bool primary) {
   ssize_t nwrite = 0;
 
   do {
-    std::cerr << "send to " << (primary ? "fd_" : "fd2_")  << std::endl;
+    // std::cerr << "send to " << (primary ? "fd_" : "fd2_")  << std::endl;
     if (primary) {
         nwrite = sendto(fd_, sendbuf_.rpos(), sendbuf_.size(), 0, (struct sockaddr*) &dest_addr_, sizeof(dest_addr_));
     } else {

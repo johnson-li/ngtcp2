@@ -249,25 +249,33 @@ nslookup 10.128.0.8 10.128.0.9
 # 4. ngtcp2 loadbalancer
 **balancer是负责数据包转发的proxy**
 ## 4.1. 安装dev包、mysqlclient
-    - sudo apt install libev-dev  mysql-client libmysql++-dev mysql-server -y
+- sudo apt install libev-dev  mysql-client libmysql++-dev mysql-server -y
 
 ## 4.2. SSL_CTX_set_ciphersuites@OPENSSL_1_1_1 问题时
-    - **针对我的archlinux，不知cause**
-    - check openssl版本，可运行版本目前为1.1.0l
+- 把libmysqlclient-dev的版本降一下
+  - sudo apt install libmysqlclient-dev=5.7.21-1ubuntu1
+- 若有用apt安装发现有冲突，可以手动安装
+    ```vim
+    sudo apt install libmysql++3v5
+    wget http://launchpadlibrarian.net/355857431/libmysqlclient20_5.7.21-1ubuntu1_amd64.deb
+    sudo apt install ./libmysqlclient20_5.7.21-1ubuntu1_amd64.deb
+    wget http://launchpadlibrarian.net/355857415/libmysqlclient-dev_5.7.21-1ubuntu1_amd64.deb
+    sudo apt install ./libmysqlclient-dev_5.7.21-1ubuntu1_amd64.deb
+    ```
 
 ## 4.3. openssl/build/lib/pkgconfig 在这个目录下创建一个文件mysqlclient.pc
-    - 这个是pkg-config用来发现动态链接库的。之前的错误是./configure的时候没有通过pkg-config找到mysqlclient的动态链接库的描述文件 也就是这个.pc文件
-    ```
-    exec_prefix=/usr/bin
-    libdir=/usr/lib/x86_64-linux-gnu/
-    includedir=/usr/include/mysql 
+- 这个是pkg-config用来发现动态链接库的。之前的错误是./configure的时候没有通过pkg-config找到mysqlclient的动态链接库的描述文件 也就是这个.pc文件
+```
+exec_prefix=/usr/bin
+libdir=/usr/lib/x86_64-linux-gnu/
+includedir=/usr/include/mysql 
 
-    Name: mysqlclient
-    Description: MysqlClient 
-    Version: 5.6.47
-    Libs: -L${libdir} -lmysqlclient -L ssl
-    Clibs
-    ```
+Name: mysqlclient
+Description: MysqlClient 
+Version: 5.6.47 # 版本可能需要根据环境change
+Libs: -L${libdir} -lmysqlclient -L ssl
+Clibs
+```
 ## 4.4. 在configure.ac里面把[mysqlclient >= 5.7.23]改成mysqlclient >= 5.6.47
 
 ## 4.5. configure.sh

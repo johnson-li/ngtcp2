@@ -403,10 +403,12 @@ int Stream::start_response() {
   http_minor = htp.http_minor;
 
   auto req_path = request_path(uri, htp.method == HTTP_CONNECT);
-  std::cerr << req_path << std::endl;
+  // std::cerr << req_path << std::endl;
   auto path = resolve_path(req_path);
   if (path.empty() || open_file(path) != 0) {
     send_status_response(404);
+    std::cerr << "404" << std::endl;
+    std::cerr << req_path << std::endl;
     return 0;
   }
 
@@ -446,7 +448,7 @@ int Stream::start_response() {
       hdr += "\r\n";
     }
     hdr += "\r\n";
-    std::cerr << hdr << std::endl;
+    // std::cerr << hdr << std::endl;
 
     auto v = Buffer{hdr.size()};
     auto p = std::begin(v.buf);
@@ -812,7 +814,7 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
 
   settings.max_stream_data = 256_k;
   settings.max_data = 1_m;
-  settings.max_stream_id_bidi = 400;
+  settings.max_stream_id_bidi = 4000;
   settings.max_stream_id_uni = 0;
   settings.idle_timeout = config.timeout;
   settings.omit_connection_id = 0;

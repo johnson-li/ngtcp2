@@ -457,7 +457,7 @@ int recv_stream0_data(ngtcp2_conn *conn, const uint8_t *data, size_t datalen,
 namespace {
 http_parser htp;
 std::map<uint32_t, std::shared_ptr<Stream>> *streams2_;
-#define MAX_ELEMENT_SIZE 500000
+#define MAX_ELEMENT_SIZE 10000000
 
 struct message {
   char body[MAX_ELEMENT_SIZE];
@@ -489,7 +489,7 @@ int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_con
 
   // generate stream content
   auto stream = std::make_unique<Stream>(stream_id);
-  std::cerr << req << std::endl;
+  // std::cerr << req << std::endl;
   auto v = Buffer{req.size()};
   auto p = std::begin(v.buf);
   p = std::copy(std::begin(req), std::end(req), p);
@@ -498,7 +498,7 @@ int http_resq(std::map<uint32_t, std::shared_ptr<Stream>> *streams_,  ngtcp2_con
   stream->streambuf.emplace_back(std::move(v));
   stream->should_send_fin = true;
   (*streams_).emplace(stream_id, std::move(stream));
-  return 0;
+  return stream_id;
 }
 
 
@@ -550,14 +550,17 @@ int http_req_resourse (std::map<uint32_t, std::shared_ptr<Stream>> *streams_, ng
             value = lxb_dom_attr_value(attr, NULL);
 
             if (value != NULL) {
-            std::cout << value << std::endl;
+            // std::cout << value << std::endl;
                 std::string req;
                 std::string url = std::string((char *) value);
-                std::string::size_type idx = url.find("https://");
+                std::string::size_type idx = url.find("//");
                 if (idx != std::string::npos) { 
-                  url =  prefix + "/" + url.substr(8);
+                  url =  prefix + "/" + url.substr(idx+2);
                 } else {
-                  url =  prefix + "/www." + prefix + url.substr(8);
+                  if (url.substr(0,1) == "/")
+                    url =  prefix + "/www." + prefix + url;
+                  else 
+                    url =  prefix + "/www." + prefix + "/" + url;
                 }
                 req = "GET /websites/" + url + " HTTP/1.1\r\n\r\n";
                 http_resq(streams_, conn_, req);
@@ -585,16 +588,16 @@ int message_complete_cb (http_parser *parser) {
   // std::cerr << "num_messages body " << messages[num_messages].body_len  << std::endl;   
   // std::cerr << "num_messages body " << messages[num_messages].body  << std::endl; 
   if (messages[num_messages].message_complete_cb_called != 1){
+    messages[num_messages].message_complete_cb_called = 1;
     if (http_req_resourse(messages[num_messages].streams_, messages[num_messages].conn_, messages[num_messages].prefix, messages[num_messages].body) != 0){
       return 1;
     }
   }
-  messages[num_messages].message_complete_cb_called = 1;
   // debug::print_timestamp();
   auto t = debug::ts(start_ts[messages[num_messages].conn_]).count();
-  std::cerr << "PLT(pls use the last print record): " << t <<  " microseconds" <<  std::endl;
-
-  num_messages++;
+  std::cerr << "\rPLT: " << t <<  " microseconds" ;
+  std::cout.flush();
+  // num_messages++;
   return 0;
 }
 
@@ -1540,31 +1543,17 @@ int Client::send_packet(bool primary) {
 int Client::start_interactive_input() {
   int rv;
 
-  std::cerr << "Interactive session started.  Hit Ctrl-D to end the session."
-            << std::endl;
+  // std::cerr << "Interactive session started.  Hit Ctrl-D to end the session."
+  //           << std::endl;
 
   ev_io_set(&stdinrev_, datafd_, EV_READ);
   ev_io_start(loop_, &stdinrev_);
 
-  if (!is_file){
-    // 读取index.csv中需要测试的网站
-    std::string domain_name;
-    std::ifstream fin("index.csv"); 
-    std::cout<<"index.csv"<<"--- all file is as follows:---"<<std::endl;
-    int i = 0;
-    while (getline(fin,domain_name)){
-      std::cout<<"==== index ======"<<std::endl;
-      std::string req = "GET /websites/" +  domain_name + "/www." + domain_name + "/index.html HTTP/1.1\r\n\r\n";
-      http_resq(&streams_, conn_, req);
-      // set connection info into message
-      messages[i].streams_ = &streams_;
-      messages[i].conn_ = conn_;
-      messages[i].prefix = domain_name;
-      i += 1;
-    }
-    fin.close();
-    is_file = 1;
-  }
+  std::string req = "GET /websites/" +  messages[num_messages].prefix + "/www." + messages[num_messages].prefix + "/index.html HTTP/1.1\r\n\r\n";
+  last_stream_id_ = http_resq(&streams_, conn_, req);
+  // set connection info into message
+  messages[num_messages].streams_ = &streams_;
+  messages[num_messages].conn_ = conn_;
 
   return 0;
 }
@@ -2101,7 +2090,8 @@ void config_set_default(Config &config) {
   config.data = nullptr;
   config.datalen = 0;
   config.version = NGTCP2_PROTO_VER_D8;
-  config.timeout = 300;
+  config.timeout = 3;
+  config.website = "";
 }
 } // namespace
 
@@ -2130,6 +2120,9 @@ Options:
   -n, --nstreams=<N>
               When used with --data,  this option specifies the number
               of streams to send the data specified by --data.
+  -w, --website=<website domain name>
+              Specify website domain name to use in string.
+              Default: ""
   -v, --version=<HEX>
               Specify QUIC version to use in hex string.
               Default: )"
@@ -2172,6 +2165,7 @@ int main(int argc, char **argv) {
         {"rx-loss", required_argument, nullptr, 'r'},
         {"interactive", no_argument, nullptr, 'i'},
         {"data", required_argument, nullptr, 'd'},
+        {"website", required_argument, nullptr, 'w'},
         {"concurrency", required_argument, nullptr, 'c'},
         {"nstreams", required_argument, nullptr, 'n'},
         {"version", required_argument, nullptr, 'v'},
@@ -2186,7 +2180,7 @@ int main(int argc, char **argv) {
     };
 
     auto optidx = 0;
-    auto c = getopt_long(argc, argv, "d:hin:qr:t:v:", long_opts, &optidx);
+    auto c = getopt_long(argc, argv, "d:w:hin:qr:t:v:", long_opts, &optidx);
     if (c == -1) {
       break;
     }
@@ -2194,6 +2188,10 @@ int main(int argc, char **argv) {
     case 'd':
       // --data
       data_path = optarg;
+      break;
+    case 'w':
+      // -website
+      config.website = optarg;
       break;
     case 'a':
       // --remote
@@ -2321,6 +2319,7 @@ int main(int argc, char **argv) {
   config.port = port;
   std::cerr << addr << std::endl;
 
+  messages[0].prefix = config.website;
   std::vector<Client*> clients;
   for (int i = 0; i < config.concurrency; ++i) {
     Client *client = new Client(EV_DEFAULT, ssl_ctx);
@@ -2336,6 +2335,8 @@ int main(int argc, char **argv) {
       close(*client);
   }
 //  close(c);
+  // 用以获取PLT打印时 flush 的最后结果显示
+  std::cerr <<  std::endl;
 
   return EXIT_SUCCESS;
 }

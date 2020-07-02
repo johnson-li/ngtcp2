@@ -8,11 +8,26 @@
   - [2.3. dynamic link error](#23-dynamic-link-error)
   - [2.4. how to get the inner element ``streams_`` in ``Client`` Class](#24-how-to-get-the-inner-element-streams_-in-client-class)
   - [2.5. 多网站测量](#25-多网站测量)
+    - [2.5.1. 相关配置](#251-相关配置)
+    - [2.5.2. 脚本执行测试](#252-脚本执行测试)
 - [3. construct DNS server](#3-construct-dns-server)
   - [3.1. setting](#31-setting)
     - [3.1.1. 安装BIND软件](#311-安装bind软件)
     - [3.1.2. options](#312-options)
+      - [3.1.2.1. sudo vim /etc/bind/named.conf.options](#3121-sudo-vim-etcbindnamedconfoptions)
+      - [3.1.2.2. sudo named-checkconf](#3122-sudo-named-checkconf)
+      - [3.1.2.3. sudo vim /etc/bind/named.conf.local](#3123-sudo-vim-etcbindnamedconflocal)
+      - [3.1.2.4. sudo mkdir /etc/bind/zones](#3124-sudo-mkdir-etcbindzones)
+      - [3.1.2.5. sudo vim /etc/bind/zones/db.example.com](#3125-sudo-vim-etcbindzonesdbexamplecom)
+      - [3.1.2.6. sudo named-checkzone example.com /etc/bind/zones/db.example.com](#3126-sudo-named-checkzone-examplecom-etcbindzonesdbexamplecom)
+      - [3.1.2.7. sudo vim /etc/bind/zones/db.10.128.0](#3127-sudo-vim-etcbindzonesdb101280)
+      - [3.1.2.8. sudo named-checkzone 0.128.10.in-addr.arpa /etc/bind/zones/db.10.128.0](#3128-sudo-named-checkzone-012810in-addrarpa-etcbindzonesdb101280)
+      - [3.1.2.9. sudo service bind9 restart](#3129-sudo-service-bind9-restart)
   - [3.2. 去另一台机子test上进行配置](#32-去另一台机子test上进行配置)
+      - [3.2.0.1. sudo vim /etc/resolvconf/resolv.conf.d/head](#3201-sudo-vim-etcresolvconfresolvconfdhead)
+      - [3.2.0.2. sudo vim /etc/resolv.conf](#3202-sudo-vim-etcresolvconf)
+      - [3.2.0.3. nameserver  10.128.0.9](#3203-nameserver-1012809)
+      - [3.2.0.4. sudo resolvconf -u](#3204-sudo-resolvconf--u)
   - [3.3. 进行测试](#33-进行测试)
 - [4. ngtcp2 loadbalancer](#4-ngtcp2-loadbalancer)
   - [4.1. 安装dev包、mysqlclient](#41-安装dev包mysqlclient)
@@ -90,8 +105,13 @@ apt install liblexbor-dev
 - message struct 主要包括了client类中的conn_, streams_, 还有HTML的content信息。
 - message中有一个``message_complete_cb_called``，用来控制收到data是否需要http解析
 ## 2.5. 多网站测量
+### 2.5.1. 相关配置
 - 在ngtcp目录下增加index.csv，每一行是一个网站（eg: google.com）
 - 在ngtcp目录下增加websites，其中放有har文件解析后的文件
+### 2.5.2. 脚本执行测试
+``` bash
+./evaluate_top.sh
+```
 
 
 

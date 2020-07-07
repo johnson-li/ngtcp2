@@ -1955,11 +1955,12 @@ int Server::on_read(int fd, bool forwarded) {
           }*/
         }
         //break;
-        count_latencies++;
         if (count_latencies >= 2) {
             break;
-        }        
+        }
+        break;
       }
+        
       std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
       std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;

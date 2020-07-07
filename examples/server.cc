@@ -883,8 +883,9 @@ int Handler::tls_handshake() {
       break;
     }
   }
-
+  
   rv = SSL_do_handshake(ssl_);
+ 
   if (rv <= 0) {
     auto err = SSL_get_error(ssl_, rv);
     switch (err) {
@@ -1224,14 +1225,11 @@ int Handler::feed_data(uint8_t *data, size_t datalen) {
   uint32_t pkt_num;
   uint8_t *payload;
   size_t payloadlen;
-  ngtcp2_conn *conn=conn_;
-  if (*data==255)
-  {
-    //ngtcp2_conn_get_domain_name(conn_, data, datalen);
-    
-  }
+  
   std::cout<<"ok"<<std::endl;
-  rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());
+
+  rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());  
+
   if (rv != 0) {
     std::cerr << "ngtcp2_conn_recv: " << ngtcp2_strerror(rv) << std::endl;
     if (rv != NGTCP2_ERR_TLS_DECRYPT) {

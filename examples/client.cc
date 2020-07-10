@@ -595,8 +595,8 @@ int message_complete_cb (http_parser *parser) {
   }
   // debug::print_timestamp();
   auto t = debug::ts(start_ts[messages[num_messages].conn_]).count();
-  std::cerr << "\rPLT: " << t <<  " microseconds" ;
-  std::cout.flush();
+  std::cerr << "\rPLT: " << t <<  " microseconds" << std::endl;
+  //std::cout.flush();
   // num_messages++;
   return 0;
 }

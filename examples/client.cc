@@ -643,7 +643,8 @@ int recv_stream_data(ngtcp2_conn *conn, uint64_t stream_id, uint8_t fin,
     debug::print_stream_data(stream_id, data, datalen);
   }
   auto t = debug::ts(start_ts[conn]).count();
-  // std::cerr << "transfer time: " << t << std::endl;
+  // std::cerr << "\rtransfer time: " << t << std::endl;
+  // std::cout.flush();
   ngtcp2_conn_extend_max_stream_offset(conn, stream_id, datalen);
   ngtcp2_conn_extend_max_offset(conn, datalen);
 

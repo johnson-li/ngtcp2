@@ -1963,7 +1963,9 @@ int Server::send_packet(int fd, Address &remote_addr, Buffer &buf) {
   char str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(remote_addr.su.in.sin_addr), str, INET_ADDRSTRLEN);
   do {
-    std::cerr << "sendto address: " << str << ":" << ntohs(remote_addr.su.in.sin_port) << ", fd: " << fd << std::endl;
+    if (!config.quiet) {
+        std::cerr << "sendto address: " << str << ":" << ntohs(remote_addr.su.in.sin_port) << ", fd: " << fd << std::endl;
+    }
     nwrite = sendto(fd, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
                     remote_addr.len);
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));

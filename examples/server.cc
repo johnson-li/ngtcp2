@@ -817,7 +817,10 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.max_packet_size = NGTCP2_MAX_PKT_SIZE;
   settings.server_unicast_ip = parseIPV4string(config.unicast_ip);
   settings.server_unicast_ttl = 1000;
+  settings.test_metadata = 2333;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
+
+  std::cerr << "test metadata: " << settings.test_metadata << std::endl;
 
   auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
   std::generate(std::begin(settings.stateless_reset_token),
@@ -1223,12 +1226,12 @@ int Handler::feed_data(uint8_t *data, size_t datalen) {
   uint8_t *payload;
   size_t payloadlen;
   ngtcp2_conn *conn=conn_;
-  if (*data==255)
+  /*if (*data==255)
   {
     ngtcp2_conn_get_domain_name(conn_, data, datalen);
     
   }
-  std::cout<<"ok"<<std::endl;
+  std::cout<<"ok"<<std::endl;*/
   rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());
   if (rv != 0) {
     std::cerr << "ngtcp2_conn_recv: " << ngtcp2_strerror(rv) << std::endl;

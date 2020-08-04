@@ -1683,6 +1683,8 @@ int transport_params_parse_cb(SSL *ssl, unsigned int ext_type,
   sa.sin_addr.s_addr = params.server_unicast_ip;
   inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN);
   c->OnMigration(params.server_unicast_ip);
+  uint32_t test_metadata = params.test_metadata;
+  std::cerr << "test_medata: " << test_metadata << std::endl;
 
   if (!config.quiet) {
     debug::print_indent();

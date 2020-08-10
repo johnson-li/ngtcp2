@@ -1865,9 +1865,6 @@ int Server::on_read(int fd, bool forwarded) {
         }
         auto fd = server_fd_map_["server"];
         std::cerr << "fd: " << fd << std::endl;
-        std::cerr << "iph:" << iph << std::endl;
-        std::cerr << "ntohs:" << ntohs(iph->tot_len) << std::endl;
-        std::cerr << "sa:" << &sa << std::endl;
         forwarded = true;
         if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
           perror("Failed to forward ip packet");

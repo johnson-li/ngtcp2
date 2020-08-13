@@ -1727,69 +1727,20 @@ int Server::on_read(int fd, bool forwarded) {
 
   int udp_size = ntohs(udph->len) - sizeof(struct udphdr);
   char sender_ip[INET_ADDRSTRLEN];
+  char target_ip[INET_ADDRSTRLEN];
   struct sockaddr_storage client_addr;
+  struct sockaddr_storage server_addr;
   ((struct sockaddr_in *) &client_addr)->sin_addr.s_addr = iph->saddr;
+  ((struct sockaddr_in *) &server_addr)->sin_addr.s_addr = iph->daddr;
   inet_ntop(AF_INET, &((struct sockaddr_in *) &client_addr)->sin_addr, sender_ip, sizeof sender_ip);
+  inet_ntop(AF_INET, &((struct sockaddr_in *) &server_addr)->sin_addr, target_ip, sizeof target_ip);
   if (iph->protocol != IPPROTO_UDP) {
     return 0;
   }
   if (udph->dest != htons(config.port)) {
     return 0;
   }
-  std::cerr << "Got packet of size: " << udp_size << " from " << sender_ip << std::endl;
-
-  /*
-  rv = ngtcp2_pkt_decode_hd(&hd, quic, nread);
-  if (rv < 0) {
-    std::cerr << "Could not decode QUIC packet header: " << ngtcp2_strerror(rv)
-              << std::endl;
-    return 0;
-  }
-
-  auto conn_id = hd.conn_id;
-
-  auto handler_it = handlers_.find(conn_id);
-  if (handler_it == std::end(handlers_)) {
-    auto ctos_it = ctos_.find(conn_id);
-    if (ctos_it == std::end(ctos_)) {
-      auto client_conn_id = conn_id;
-      constexpr size_t MIN_PKT_SIZE = 1200;
-      if (static_cast<size_t>(nread) < MIN_PKT_SIZE) {
-        if (!config.quiet) {
-          std::cerr << "Initial packet is too short: " << nread << " < "
-                    << MIN_PKT_SIZE << std::endl;
-        }
-        return 0;
-      }
-
-      rv = ngtcp2_accept(&hd, quic, nread);
-      if (rv == -1) {
-        if (!config.quiet) {
-          std::cerr << "Unexpected packet received" << std::endl;
-        }
-        return 0;
-      }
-      if (rv == 1) {
-        if (!config.quiet) {
-          std::cerr << "Unsupported version: Send Version Negotiation"
-                    << std::endl;
-        }
-        send_version_negotiation(&hd, &su.sa, addrlen);
-        return 0;
-      }
-
-      auto h = std::make_unique<Handler>(loop_, ssl_ctx_, this, client_conn_id);
-      h->init(fd_, &su.sa, addrlen, hd.version);
-
-      std::chrono::high_resolution_clock::time_point start_ts3 = std::chrono::high_resolution_clock::now();
-      if (h->on_read(quic, nread) != 0) {
-        return 0;
-      }
-      std::cerr << "hostname: " << h->hostname() << std::endl;
-      std::chrono::high_resolution_clock::time_point end_ts3 = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double, std::milli> time_span3 = end_ts3 - start_ts3;
-      std::cerr << "Parsing QUIC packet costs " << time_span3.count() << " milliseconds." << std::endl;
-      */
+  std::cerr << "Got packet of size: " << udp_size << " from " << sender_ip << " to " << target_ip << std::endl;
 
       MYSQL_ROW row = NULL;
       MYSQL_RES *result, *result2, *result3;
@@ -1865,16 +1816,14 @@ int Server::on_read(int fd, bool forwarded) {
             std::cerr << iter->first << " : " << iter->second << std::endl;
             iter++;
         }
-        auto fd = server_fd_map_["server"];
+        auto fd = balancer_fd_map_["lo"];
         std::cerr << "fd: " << fd << std::endl;
-        std::cerr << "iph:" << iph << std::endl;
-        std::cerr << "ntohs:" << ntohs(iph->tot_len) << std::endl;
-        std::cerr << "sa:" << &sa << std::endl;
+        udph->dest = htons(4434);
         packet_forwarded = true;
         if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
           perror("Failed to forward ip packet");
         } else {
-          std::cerr << "Forwarded to local dc: "<< std::endl;
+          std::cerr << "Forwarded to local dc"<< std::endl;
         }
       }
       /*
@@ -1933,12 +1882,13 @@ int Server::on_read(int fd, bool forwarded) {
           }
 //          auto server = servers[std::rand() % servers.size()];
           auto server = servers[0]; */
-          std::string server = "server";
+          std::string server = "lo";
           std::cerr << "selected server: " << server << std::endl;
           mysql_free_result(result);
 
           auto fd = server_fd_map_[server];
           packet_forwarded = true;
+          udph->dest = htons(4434);
           if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
             perror("Failed to forward ip packet");
           } else {

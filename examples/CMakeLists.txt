@@ -56,6 +56,15 @@ if(LIBEV_FOUND AND OPENSSL_FOUND AND LIBMYSQLCLIENT_FOUND)
     http.cc
   )
 
+  set(server2_SOURCES
+    server2.cc
+    debug.cc
+    util.cc
+    crypto_openssl.cc
+    crypto.cc
+    http.cc
+  )
+
   set(balancer_SOURCES
     balancer.cc
     debug.cc
@@ -75,6 +84,7 @@ if(LIBEV_FOUND AND OPENSSL_FOUND AND LIBMYSQLCLIENT_FOUND)
   )
   add_executable(client ${client_SOURCES} $<TARGET_OBJECTS:http-parser>)
   add_executable(server ${server_SOURCES} $<TARGET_OBJECTS:http-parser>)
+  add_executable(server2 ${server2_SOURCES} $<TARGET_OBJECTS:http-parser>)
   add_executable(balancer ${balancer_SOURCES} $<TARGET_OBJECTS:http-parser>)
   add_executable(balancer2 ${balancer2_SOURCES} $<TARGET_OBJECTS:http-parser>)
   set_target_properties(client PROPERTIES

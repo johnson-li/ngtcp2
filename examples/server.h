@@ -328,11 +328,7 @@ public:
 
     int on_write(int fd);
 
-    int on_read(int fd, bool forwarded);
-
-    int on_read_balancer(int fd, std::array<uint8_t, 64_k> buf);
-
-    int on_read_server(int fd, std::array<uint8_t, 64_k> buf);
+    int on_read(int fd);
 
     void unicast_fd(int fd) { unicast_fd_ = fd; }
 

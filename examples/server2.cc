@@ -40,7 +40,7 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 
-#include "server.h"
+#include "server2.h"
 #include "network.h"
 #include "debug.h"
 #include "util.h"

@@ -777,17 +777,7 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   std::cerr << "init handler" << std::endl;
   remote_addr_.len = salen;
   memcpy(&remote_addr_.su.sa, sa, salen);
-
-  switch (remote_addr_.su.storage.ss_family) {
-  case AF_INET:
-    max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV4;
-    break;
-  case AF_INET6:
-    max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV6;
-    break;
-  default:
-    return -1;
-  }
+  max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV4;
 
   fd_ = fd;
   ssl_ = SSL_new(ssl_ctx_);
@@ -1791,13 +1781,13 @@ int Server::on_read(int fd, bool unicast, bool forwarded) {
     return 0;
   }
   if (forwarded || unicast) {
-    return on_read_server(fd, buf, nread);
+    return on_read_server(fd, su, addrlen, buf, nread);
   } else {
-    return on_read_balancer(fd, buf, nread);
+    return on_read_balancer(fd, su, addrlen, buf, nread);
   }
 }
 
-int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> &buf, int buf_size) {
+int Server::on_read_balancer(int fd, sockaddr_union su, socklen_t addrlen, std::array<uint8_t, 64_k> &buf, int buf_size) {
   std::chrono::high_resolution_clock::time_point start_ts = std::chrono::high_resolution_clock::now();
 
   if (debug::packet_lost(config.rx_loss_prob)) {
@@ -1875,7 +1865,7 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> &buf, int buf_siz
     sa.sin_addr.s_addr = iph->daddr;
     std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
     packet_forwarded = true;
-    on_read_server(fd, buf, buf_size);
+    on_read_server(fd, su, addrlen, buf, buf_size);
   }
 
   std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
@@ -1908,7 +1898,7 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> &buf, int buf_siz
     } else {
       std::cerr << "The current dc is the best, choose server to forward" << std::endl;
       packet_forwarded = true;
-      on_read_server(fd, buf, buf_size);
+      on_read_server(fd, su, addrlen, buf, buf_size);
     }
     //break;
   }
@@ -1926,9 +1916,7 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> &buf, int buf_siz
   return 0;
 }
 
-int Server::on_read_server(int fd, std::array<uint8_t, 64_k> &buf, int buf_size) {
-  sockaddr_union su;
-  socklen_t addrlen = sizeof(su);
+int Server::on_read_server(int fd, sockaddr_union su, socklen_t addrlen, std::array<uint8_t, 64_k> &buf, int buf_size) {
   char str[INET_ADDRSTRLEN];
   int rv;
   ngtcp2_pkt_hd hd;

@@ -1790,14 +1790,14 @@ int Server::on_read(int fd, bool unicast, bool forwarded) {
     // TODO Handle running out of fd
     return 0;
   }
-  if (forwarded) {
-    return on_read_server(fd, buf);
+  if (forwarded || unicast) {
+    return on_read_server(fd, buf, nread);
   } else {
-    return on_read_balancer(fd, buf);
+    return on_read_balancer(fd, buf, nread);
   }
 }
 
-int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
+int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> &buf, int buf_size) {
   std::chrono::high_resolution_clock::time_point start_ts = std::chrono::high_resolution_clock::now();
 
   if (debug::packet_lost(config.rx_loss_prob)) {
@@ -1811,7 +1811,6 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
   ether_header *eh = (ether_header *) data;
   iphdr *iph = (iphdr *) (data + sizeof(ether_header));
   udphdr *udph = (udphdr *) (data + sizeof(iphdr) + sizeof(ether_header));
-//  nread -= sizeof(udphdr) + sizeof(iphdr) + sizeof(ether_header);
 
   int udp_size = ntohs(udph->len) - sizeof(struct udphdr);
   char sender_ip[INET_ADDRSTRLEN];
@@ -1876,7 +1875,7 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
     sa.sin_addr.s_addr = iph->daddr;
     std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
     packet_forwarded = true;
-    on_read_server(fd, buf);
+    on_read_server(fd, buf, buf_size);
   }
 
   std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
@@ -1909,7 +1908,7 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
     } else {
       std::cerr << "The current dc is the best, choose server to forward" << std::endl;
       packet_forwarded = true;
-      on_read_server(fd, buf);
+      on_read_server(fd, buf, buf_size);
     }
     //break;
   }
@@ -1927,13 +1926,13 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
   return 0;
 }
 
-int Server::on_read_server(int fd, std::array<uint8_t, 64_k> buf) {
+int Server::on_read_server(int fd, std::array<uint8_t, 64_k> &buf, int buf_size) {
   sockaddr_union su;
   socklen_t addrlen = sizeof(su);
   char str[INET_ADDRSTRLEN];
   int rv;
   ngtcp2_pkt_hd hd;
-  int nread;
+  int nread = buf_size;
 
   // filling arp entry
   if (fd != unicast_fd_) {
@@ -1947,7 +1946,8 @@ int Server::on_read_server(int fd, std::array<uint8_t, 64_k> buf) {
     return 0;
   }
 
-  rv = ngtcp2_pkt_decode_hd(&hd, buf.data(), nread);
+  auto data = buf.data();
+  rv = ngtcp2_pkt_decode_hd(&hd, data, nread);
   if (rv < 0) {
     std::cerr << "Could not decode QUIC packet header: " << ngtcp2_strerror(rv)
               << std::endl;
@@ -1970,7 +1970,7 @@ int Server::on_read_server(int fd, std::array<uint8_t, 64_k> buf) {
         return 0;
       }
 
-      rv = ngtcp2_accept(&hd, buf.data(), nread);
+      rv = ngtcp2_accept(&hd, data, nread);
       if (rv == -1) {
         if (!config.quiet) {
           std::cerr << "Unexpected packet received" << std::endl;
@@ -1989,7 +1989,7 @@ int Server::on_read_server(int fd, std::array<uint8_t, 64_k> buf) {
       auto h = std::make_unique<Handler>(loop_, ssl_ctx_, this, client_conn_id);
       h->init(fd, &su.sa, addrlen, hd.version);
 
-      if (h->on_read(buf.data(), nread) != 0) {
+      if (h->on_read(data, nread) != 0) {
         return 0;
       }
       rv = h->on_write();
@@ -2040,7 +2040,7 @@ int Server::on_read_server(int fd, std::array<uint8_t, 64_k> buf) {
   memcpy(&remote_addr->su.sa, &su.sa, addrlen);
   inet_ntop(AF_INET, &(remote_addr->su.in.sin_addr), str, INET_ADDRSTRLEN);
   std::cerr << "update fd: " << fd << ", " << str << ":" << ntohs(remote_addr->su.in.sin_port) << std::endl;
-  rv = h->on_read(buf.data(), nread);
+  rv = h->on_read(data, nread);
   if (rv != 0) {
     if (rv != NETWORK_ERR_CLOSE_WAIT) {
       remove(handler_it);
@@ -2427,7 +2427,8 @@ void create_sock(std::vector<int> *fds, const char *unicast_nic,
       continue;
     }
     fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
-    printf("Registered interface: %s, %d\n", tmp->ifa_name, fd);
+    int port = !strcmp(tmp->ifa_name, unicast_nic) ? port_server : port_balancer;
+    printf("Registered interface: %s, %d on port %d\n", tmp->ifa_name, fd, port);
     if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
       std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
       close(fd);
@@ -2437,7 +2438,7 @@ void create_sock(std::vector<int> *fds, const char *unicast_nic,
     struct sockaddr_in sa;
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
-    sa.sin_port = htons(!strcmp(tmp->ifa_name, unicast_nic) ? port_server : port_balancer);
+    sa.sin_port = htons(port);
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {

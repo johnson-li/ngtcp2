@@ -284,7 +284,9 @@ std::string make_status_body(unsigned int status_code) {
   body += "</h1><hr><address>";
   body += NGTCP2_SERVER;
   body += " at port ";
-  body += std::to_string(config.port);
+  body += std::to_string(config.port_balancer);
+  body += ",";
+  body += std::to_string(config.port_server);
   body += "</address>";
   body += "</body></html>";
   return body;
@@ -1239,7 +1241,7 @@ int Handler::feed_data(uint8_t *data, size_t datalen) {
   /*if (*data==255)
   {
     ngtcp2_conn_get_domain_name(conn_, data, datalen);
-    
+
   }
   std::cout<<"ok"<<std::endl;*/
   rv = ngtcp2_conn_recv(conn_, data, datalen, util::timestamp());
@@ -1632,10 +1634,20 @@ void swritecb(struct ev_loop *loop, ev_io *w, int revents) {
 } // namespace
 
 namespace {
+// Listen on the unicast NIC
 void sreadcb(struct ev_loop *loop, ev_io *w, int revents) {
   auto s = static_cast<ServerWrapper *>(w->data);
-
-  s->server_->on_read(s->fd_, false);
+  s->server_->on_read(s->fd_, true, false);
+}
+// Listen on the GRE NIC
+void breadcb(struct ev_loop *loop, ev_io *w, int revents) {
+  auto s = static_cast<ServerWrapper *>(w->data);
+  s->server_->on_read(s->fd_, false, true);
+}
+// Listen on the anycast NIC
+void areadcb(struct ev_loop *loop, ev_io *w, int revents) {
+  auto s = static_cast<ServerWrapper *>(w->data);
+  s->server_->on_read(s->fd_, false, false);
 }
 } // namespace
 
@@ -1695,24 +1707,26 @@ int Server::init(std::vector<int> fds, const char *user, const char *password, c
 
   for (int i = 0; i < fd_size(); i++) {
     ev_io_init(wev(i), swritecb, 0, EV_WRITE);
-    ev_io_init(rev(i), sreadcb, 0, EV_READ);
+    if (fds[i] == unicast_fd_) {
+      ev_io_init(rev(i), sreadcb, 0, EV_READ);
+    } else if (fds[i] == anycast_fd_) {
+      ev_io_init(rev(i), areadcb, 0, EV_READ);
+    } else {
+      ev_io_init(rev(i), breadcb, 0, EV_READ);
+    }
     auto server_wrapper = new ServerWrapper(fds[i], this);
     wev(i)->data = server_wrapper;
     rev(i)->data = server_wrapper;
   }
   ev_signal_init(&sigintev_, siginthandler, SIGINT);
-
   for (int i = 0; i < fds_.size(); i++) {
     ev_io_set(wev(i), fds_[i], EV_WRITE);
     ev_io_set(rev(i), fds_[i], EV_READ);
   }
-
   for (int i = 0; i < fds_.size(); ++i) {
     ev_io_start(loop_, rev(i));
   }
-
   ev_signal_start(loop_, &sigintev_);
-
   return 0;
 }
 
@@ -1757,7 +1771,7 @@ void arp_add(sockaddr* sa) {
   }
 }}
 
-int Server::on_read(int fd, forwarded) {
+int Server::on_read(int fd, bool unicast, bool forwarded) {
   sockaddr_union su;
   socklen_t addrlen = sizeof(su);
   std::array<uint8_t, 64_k> buf;
@@ -1768,7 +1782,9 @@ int Server::on_read(int fd, forwarded) {
       recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
   char str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(su.in.sin_addr), str, INET_ADDRSTRLEN);
-  std::cerr << "Got packet from " << str << ":" << ntohs(su.in.sin_port) << ", " << fd << std::endl;
+  std::cerr << "Got packet from " << str << ":" << ntohs(su.in.sin_port)
+            << ", " << fd << ", unicast: " << unicast << ", forwarded: "
+            << forwarded << std::endl;
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
     // TODO Handle running out of fd
@@ -1795,7 +1811,7 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
   ether_header *eh = (ether_header *) data;
   iphdr *iph = (iphdr *) (data + sizeof(ether_header));
   udphdr *udph = (udphdr *) (data + sizeof(iphdr) + sizeof(ether_header));
-  nread -= sizeof(udphdr) + sizeof(iphdr) + sizeof(ether_header);
+//  nread -= sizeof(udphdr) + sizeof(iphdr) + sizeof(ether_header);
 
   int udp_size = ntohs(udph->len) - sizeof(struct udphdr);
   char sender_ip[INET_ADDRSTRLEN];
@@ -1809,104 +1825,105 @@ int Server::on_read_balancer(int fd, std::array<uint8_t, 64_k> buf) {
   if (iph->protocol != IPPROTO_UDP) {
     return 0;
   }
-  if (udph->dest != htons(config.port)) {
+  if (udph->dest != htons(config.port_balancer)) {
     return 0;
   }
-      MYSQL_ROW row = NULL;
-      MYSQL_RES *result, *result2, *result3;
-      std::ostringstream sql;
 
-      // select balancer
-      sql.str("");
-      sql << "select dc, latency from measurements where id in (select max(id) from measurements where client = '" << sender_ip << "' group by dc, client)";
-      std::cerr << "executing sql1: " << sql.str() << std::endl;
-      std::chrono::high_resolution_clock::time_point start_ts1 = std::chrono::high_resolution_clock::now();
-      mysql_query(mysql_, sql.str().c_str());
-      std::cerr << "mysql query finished" << std::endl;
-      result = mysql_store_result(mysql_);
-      std::cerr << result << std::endl;
-      std::vector<LatencyDC> latencies;
-      if (result) {
-          row = mysql_fetch_row(result);
-          if (row == NULL) {
-            std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
-          }
-          while (row != NULL) {
-              std::cerr << "Got measurement result: " << row[0] << " " << row[1] << std::endl;
-              LatencyDC dc {row[0], atoi(row[1])};
-              latencies.push_back(dc);
-              row = mysql_fetch_row(result);
-              std::cerr << "sql1: " << row << std::endl;
-          }
+  MYSQL_ROW row = NULL;
+  MYSQL_RES *result, *result2, *result3;
+  std::ostringstream sql;
+
+  // select balancer
+  sql.str("");
+  sql << "select dc, latency from measurements where id in (select max(id) from measurements where client = '" << sender_ip << "' group by dc, client)";
+  std::cerr << "executing sql1: " << sql.str() << std::endl;
+  std::chrono::high_resolution_clock::time_point start_ts1 = std::chrono::high_resolution_clock::now();
+  mysql_query(mysql_, sql.str().c_str());
+  std::cerr << "mysql query finished" << std::endl;
+  result = mysql_store_result(mysql_);
+  std::cerr << result << std::endl;
+  std::vector<LatencyDC> latencies;
+  if (result) {
+    row = mysql_fetch_row(result);
+    if (row == NULL) {
+      std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
+    }
+    while (row != NULL) {
+      std::cerr << "Got measurement result: " << row[0] << " " << row[1] << std::endl;
+      LatencyDC dc {row[0], atoi(row[1])};
+      latencies.push_back(dc);
+      row = mysql_fetch_row(result);
+      std::cerr << "sql1: " << row << std::endl;
+    }
+  } else {
+    std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
+  }
+  std::chrono::high_resolution_clock::time_point end_ts1 = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> time_span1 = end_ts1 - start_ts1;
+  std::cerr << "Executing sql 1 costs " << time_span1.count() << " milliseconds." << std::endl;
+  // when no measurement query results
+  if (row == NULL){
+    std::cerr << "sql1 == null: " << row << std::endl;
+  }
+  std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
+  bool packet_forwarded = false;
+  if (latencies.empty()) {
+    // scheme 2
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = udph->dest;
+    sa.sin_addr.s_addr = iph->daddr;
+    std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
+    packet_forwarded = true;
+    on_read_server(fd, buf);
+  }
+
+  std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
+  auto count_latencies = 0;
+  for (auto ldc : latencies) {
+    std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
+    if (ldc.latency <= 0) {
+      continue;
+    }
+    std::cerr << "count_latencies: " << count_latencies << std::endl;
+    count_latencies++;
+    if (count_latencies >= 2) {
+      break;
+    }
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = udph->dest;
+    sa.sin_addr.s_addr = iph->daddr;
+    if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
+      std::cerr << "The current dc is not the best, forward the packet to ldc: " << ldc.dc.c_str() << std::endl;
+      auto interface = ldc.dc;
+      auto fd = balancer_fd_map_[interface];
+      packet_forwarded = true;
+      if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        perror("Failed to forward ip packet");
       } else {
-          std::cerr << "ERROR: No measurement result is found for client " << sender_ip << std::endl;
+        std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
       }
-      std::chrono::high_resolution_clock::time_point end_ts1 = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double, std::milli> time_span1 = end_ts1 - start_ts1;
-      std::cerr << "Executing sql 1 costs " << time_span1.count() << " milliseconds." << std::endl;
-      // when no measurement query results
-      if (row == NULL){
-          std::cerr << "sql1 == null: " << row << std::endl;
-      }
-      std::sort(latencies.begin(), latencies.end(), LatencyDCCmp());
-      bool packet_forwarded = false;
-      if (latencies.empty()) {
-        // scheme 2
-        struct sockaddr_in sa;
-        memset(&sa, 0, sizeof(sa));
-        sa.sin_family = AF_INET;
-        sa.sin_port = udph->dest;
-        sa.sin_addr.s_addr = iph->daddr;
-        std::cerr << "latencies vector is empty. forward to local data center" << std::endl;
-        packet_forwarded = true;
-        on_read_server(fd, buf); 
-      }
-        
-      std::cerr << "=====latency optimized routing and forwarding selecting START=====" << std::endl;
-      auto count_latencies = 0;
-      for (auto ldc : latencies) {
-        std::cerr << "latency info: " << ldc.dc << ", " << ldc.latency << std::endl;
-        if (ldc.latency <= 0) {
-          continue;
-        }
-        std::cerr << "count_latencies: " << count_latencies << std::endl;
-        count_latencies++;
-        if (count_latencies >= 2) {
-          break;
-        }
-        struct sockaddr_in sa;
-        memset(&sa, 0, sizeof(sa));
-        sa.sin_family = AF_INET;
-        sa.sin_port = udph->dest;
-        sa.sin_addr.s_addr = iph->daddr;
-        if (strcmp(config.datacenter, ldc.dc.c_str()) != 0) {
-          std::cerr << "The current dc is not the best, forward the packet to ldc: " << ldc.dc.c_str() << std::endl; 
-          auto interface = ldc.dc;
-          auto fd = balancer_fd_map_[interface];
-          packet_forwarded = true;
-          if (sendto(fd, iph, ntohs(iph->tot_len), 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-            perror("Failed to forward ip packet");
-          } else {
-            std::cerr << "Forwarded to balancer: " << interface << " in " << ldc.dc << std::endl;
-          }
-        } else {
-          std::cerr << "The current dc is the best, choose server to forward" << std::endl; 
-          packet_forwarded = true;
-          on_read_server(fd, buf); 
-        }
-        //break;
-      }
-      std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
-      std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
-      std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
+    } else {
+      std::cerr << "The current dc is the best, choose server to forward" << std::endl;
+      packet_forwarded = true;
+      on_read_server(fd, buf);
+    }
+    //break;
+  }
+  std::cerr << "=====latency optimized routing and forwarding selecting END=====" << std::endl;
+  std::chrono::high_resolution_clock::time_point end_ts = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::milli> time_span = end_ts - start_ts;
+  std::cerr << "Packet forwarding costs " << time_span.count() << " milliseconds." << std::endl;
 
-      if (!packet_forwarded) {
-        std::cerr << "Failed to find server/balancer to forward" << std::endl;
-      }
+  if (!packet_forwarded) {
+    std::cerr << "Failed to find server/balancer to forward" << std::endl;
+  }
 
-      //mysql_free_result(result);
-      mysql_free_result(result2);
+  //mysql_free_result(result);
+  mysql_free_result(result2);
   return 0;
 }
 
@@ -1994,7 +2011,7 @@ int Server::on_read_server(int fd, std::array<uint8_t, 64_k> buf) {
     if (!config.quiet) {
       debug::print_timestamp();
       fprintf(stderr, "Forward CID=%016" PRIx64 " to CID=%016" PRIx64 "\n",
-              (*ctos_it).first, (*ctos_it).second);
+          (*ctos_it).first, (*ctos_it).second);
     }
     handler_it = handlers_.find((*ctos_it).second);
     assert(handler_it != std::end(handlers_));
@@ -2146,8 +2163,8 @@ void Server::remove(const Handler *h) {
 
 std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator Server::remove(
     std::map<uint64_t, std::unique_ptr<Handler>>::const_iterator it) {
-  ctos_.erase((*it).second->client_conn_id());
-  return handlers_.erase(it);
+ctos_.erase((*it).second->client_conn_id());
+return handlers_.erase(it);
 }
 
 void Server::start_wev() {
@@ -2214,8 +2231,8 @@ int transport_params_add_cb(SSL *ssl, unsigned int ext_type,
 
   ngtcp2_transport_params params;
   int param_type = context == SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS
-                       ? NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS
-                       : NGTCP2_TRANSPORT_PARAMS_TYPE_NEW_SESSION_TICKET;
+                   ? NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS
+                   : NGTCP2_TRANSPORT_PARAMS_TYPE_NEW_SESSION_TICKET;
 
   rv = ngtcp2_conn_get_local_transport_params(conn, &params, param_type);
   if (rv != 0) {
@@ -2349,11 +2366,11 @@ SSL_CTX *create_ssl_ctx(const char *private_key_file, const char *cert_file) {
   }
 
   if (SSL_CTX_add_custom_ext(
-          ssl_ctx, NGTCP2_TLSEXT_QUIC_TRANSPORT_PARAMETERS,
-          SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS |
-              SSL_EXT_TLS1_3_NEW_SESSION_TICKET,
-          transport_params_add_cb, transport_params_free_cb, nullptr,
-          transport_params_parse_cb, nullptr) != 1) {
+      ssl_ctx, NGTCP2_TLSEXT_QUIC_TRANSPORT_PARAMETERS,
+      SSL_EXT_CLIENT_HELLO | SSL_EXT_TLS1_3_ENCRYPTED_EXTENSIONS |
+      SSL_EXT_TLS1_3_NEW_SESSION_TICKET,
+      transport_params_add_cb, transport_params_free_cb, nullptr,
+      transport_params_parse_cb, nullptr) != 1) {
     std::cerr << "SSL_CTX_add_custom_ext(NGTCP2_TLSEXT_QUIC_TRANSPORT_"
                  "PARAMETERS) failed: "
               << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
@@ -2364,15 +2381,40 @@ SSL_CTX *create_ssl_ctx(const char *private_key_file, const char *cert_file) {
 
   return ssl_ctx;
 
-fail:
+  fail:
   SSL_CTX_free(ssl_ctx);
   return nullptr;
 }
 } // namespace
 
+char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
+{
+  switch(sa->sa_family) {
+  case AF_INET:
+    inet_ntop(AF_INET, &(((struct sockaddr_in *)sa)->sin_addr),
+              s, maxlen);
+    break;
+
+  case AF_INET6:
+    inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)sa)->sin6_addr),
+              s, maxlen);
+    break;
+
+  case AF_PACKET:
+    sprintf(s, "AF_PACKET");
+    break;
+  default:
+    sprintf(s, "Unknown AF: %ud", sa->sa_family);
+    return NULL;
+  }
+
+  return s;
+}
 
 namespace {
-void create_sock(std::vector<int> *fds, const char *interface, const int port, int family, Server &s) {
+void create_sock(std::vector<int> *fds, const char *unicast_nic,
+                 const char *anycast_nic, const int port_balancer,
+                 const int port_server, int family, Server &s) {
   struct ifaddrs *addrs ,*tmp;
   int fd = -1;
 
@@ -2384,33 +2426,39 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
       tmp = tmp->ifa_next;
       continue;
     }
-    if (!strncmp(tmp->ifa_name, "router", 6) || !strcmp(tmp->ifa_name, interface) || !strncmp(tmp->ifa_name, "lo", 2)) {
-      balancer_interfaces.insert(std::string(tmp->ifa_name));
-      fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
-      if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
-        std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
-        close(fd);
-        tmp = tmp->ifa_next;
-        continue;
-      }
-      struct sockaddr_in sa;
-      memset(&sa, 0, sizeof(sa));
-      sa.sin_family = AF_INET;
-      sa.sin_port = htons(port);
-      sa.sin_addr.s_addr = htonl(INADDR_ANY);
+    fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+    printf("Registered interface: %s, %d\n", tmp->ifa_name, fd);
+    if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
+      std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
+      close(fd);
+      tmp = tmp->ifa_next;
+      continue;
+    }
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(!strcmp(tmp->ifa_name, unicast_nic) ? port_server : port_balancer);
+    sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
-      if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << ntohs(sa.sin_port) << ", " << strerror(errno) << std::endl;
-        close(fd);
-        tmp = tmp->ifa_next;
-        continue;
-      }
-      fds->push_back(fd);
-      if (!strcmp(tmp->ifa_name, interface)) {
-        std::cerr << "set unicast fd: " << fd << std::endl;
-        s.unicast_fd(fd);
-      }
-      printf("listening on interface: %s, port: %d, fd: %d\n", tmp->ifa_name, port, fd);
+    if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+      std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << ntohs(sa.sin_port) << ", " << strerror(errno) << std::endl;
+      close(fd);
+      tmp = tmp->ifa_next;
+      continue;
+    }
+    fds->push_back(fd);
+    if (!strcmp(tmp->ifa_name, unicast_nic)) {
+      // Read from unicast nic
+      std::cerr << "set unicast fd: " << fd << std::endl;
+      s.unicast_fd(fd);
+    } else if (!strcmp(tmp->ifa_name, anycast_nic)) {
+      // Read from anycast nic
+      std::cerr << "set anycast fd: " << fd << std::endl;
+      s.anycast_fd(fd);
+    } else {
+      // Read from GRE tunnels from the other data centers
+      std::cerr << "set GRE fd: " << fd << std::endl;
+      balancer_interfaces.insert(std::string(tmp->ifa_name));
     }
     tmp = tmp->ifa_next;
   }
@@ -2420,19 +2468,21 @@ void create_sock(std::vector<int> *fds, const char *interface, const int port, i
 } // namespace
 
 namespace {
-int serve(Server &s, const char *interface, const int port, int family) {
+int serve(Server &s, const char *unicast_nic, const char *anycast_nic, const char *addr, const int port_balancer, const int port_server,
+          int family, const char *user, const char *password,
+          const char *mysql_ip) {
   std::vector<int> fds;
-  create_sock(&fds, interface, port, family, s);
+  create_sock(&fds, unicast_nic, anycast_nic, port_balancer, port_server, family, s);
   if (fds.size() == 0) {
     return -1;
   }
 
-  if (s.init(fds) != 0) {
+  if (s.init(fds, user, password, mysql_ip) != 0) {
     return -1;
   }
   return 0;
-}
 } // namespace
+}
 
 namespace {
 void close(Server &s) {
@@ -2495,15 +2545,16 @@ Options:
             << config.ciphers << R"(
   --groups=<GROUPS>
               Specify the supported groups.
-              Default: )" << config.groups << R"(
+              Default: )"
+            << config.groups << R"(
   -d, --htdocs=<PATH>
               Specify document root.  If this option is not specified,
               the document root is the current working directory.
   -q, --quiet Suppress debug output.
   --timeout=<T>
               Specify idle timeout in seconds.
-              Default: )" << config.timeout
-            << R"(
+              Default: )"
+            << config.timeout << R"(
   -h, --help  Display this help and exit.
 )";
 }
@@ -2519,7 +2570,8 @@ int main(int argc, char **argv) {
         {"tx-loss", required_argument, nullptr, 't'},
         {"rx-loss", required_argument, nullptr, 'r'},
         {"htdocs", required_argument, nullptr, 'd'},
-        {"interface", required_argument, nullptr, 'f'},
+        {"unicast_nic", required_argument, nullptr, 'f'},
+        {"anycast_nic", required_argument, nullptr, 'g'},
         {"unicast", required_argument, nullptr, 'u'},
         {"ipv6", no_argument, nullptr, 'i'},
         {"quiet", no_argument, nullptr, 'q'},
@@ -2550,9 +2602,13 @@ int main(int argc, char **argv) {
       print_help();
       exit(EXIT_SUCCESS);
     case 'f':
-      // --interface
-      config.interface = optarg;
-        break;
+      // --unicast_nic
+      config.unicast_nic = optarg;
+      break;
+    case 'g':
+      // --anycast_nic
+      config.anycast_nic = optarg;
+      break;
     case 'u':
       // --unicast
       config.unicast_ip = optarg;
@@ -2603,16 +2659,14 @@ int main(int argc, char **argv) {
   }
 
   auto addr = argv[optind++];
-  auto port = argv[optind++];
+  auto port_balancer = argv[optind++];
+  auto port_server = argv[optind++];
   auto private_key_file = argv[optind++];
   auto cert_file = argv[optind++];
 
   errno = 0;
-  config.port = strtoul(port, nullptr, 10);
-  if (errno != 0 || config.port > 30000 || config.port <= 0) {
-    std::cerr << "port: invalid port number" << std::endl;
-    exit(EXIT_FAILURE);
-  }
+  config.port_balancer = strtoul(port_balancer, nullptr, 10);
+  config.port_server = strtoul(port_server, nullptr, 10);
 
   auto ssl_ctx = create_ssl_ctx(private_key_file, cert_file);
   if (ssl_ctx == nullptr) {
@@ -2636,19 +2690,11 @@ int main(int argc, char **argv) {
   }
 
   auto ready = false;
-
   Server s4(EV_DEFAULT, ssl_ctx);
-//  Server s6(EV_DEFAULT, ssl_ctx);
-
-//  if (config.ipv6) {
-//    if (serve(s6, config.interface, config.port, AF_INET6) == 0) {
-//      ready = true;
-//    }
-//  } else {
-  if (serve(s4, config.interface, config.port, AF_INET) == 0) {
+  if (serve(s4, config.unicast_nic, config.anycast_nic, addr, config.port_balancer, config.port_server,
+            AF_INET, config.user, config.password, config.mysql_ip) == 0) {
     ready = true;
   }
-//  }
 
   if (!ready) {
     exit(EXIT_FAILURE);
@@ -2656,7 +2702,6 @@ int main(int argc, char **argv) {
 
   ev_run(EV_DEFAULT, 0);
 
-  //close(s6);
   close(s4);
 
   return EXIT_SUCCESS;

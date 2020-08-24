@@ -34,6 +34,8 @@
 #include <map>
 #include <set>
 #include <string>
+#include <iostream>
+#include <sstream>
 #include <net/if_arp.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
@@ -65,15 +67,21 @@ struct Config {
     std::string htdocs;
     // port is the port number which server listens on for incoming
     // connections.
-    uint16_t port;
+    uint16_t port_balancer;
+    uint16_t port_server;
     // quiet suppresses the output normally shown except for the error
     // messages.
     bool quiet;
     // timeout is an idle timeout for QUIC connection.
     uint32_t timeout;
     bool ipv6;
-    const char *interface = "eth0";
+    const char *user = "root";
+    const char *password = "root";
+    const char *unicast_nic = "eth0";
+    const char *anycast_nic = "eth1";
+    const char *mysql_ip = "127.0.0.1";
     const char *unicast_ip = "127.0.0.1";
+    const char *datacenter = "test";
 };
 
 struct Buffer {
@@ -312,13 +320,26 @@ private:
     bool draining_;
 };
 
+struct LatencyDC {
+  std::string dc;
+  int latency;
+
+  LatencyDC(std::string d, int l) : dc(d), latency(l) {}
+};
+
+struct LatencyDCCmp {
+  inline bool operator () (const LatencyDC& l1, const LatencyDC& l2) {
+    return (l1.latency < l2.latency);
+  }
+};
+
 class Server {
 public:
     Server(struct ev_loop *loop, SSL_CTX *ssl_ctx);
 
     ~Server();
 
-    int init(std::vector<int> fds);
+    int init(std::vector<int> fds, const char *user, const char *password, const char *mysql_ip);
 
     void disconnect();
 
@@ -328,13 +349,15 @@ public:
 
     int on_write(int fd);
 
-    int on_read(int fd, bool forwarded);
+    int on_read(int fd, bool unicast,bool forwarded);
 
     int on_read_balancer(int fd, std::array<uint8_t, 64_k> buf);
 
     int on_read_server(int fd, std::array<uint8_t, 64_k> buf);
 
     void unicast_fd(int fd) { unicast_fd_ = fd; }
+
+    void anycast_fd(int fd) { anycast_fd_ = fd; }
 
     int send_version_negotiation(int fd, const ngtcp2_pkt_hd *hd, const sockaddr *sa,
                                  socklen_t salen);
@@ -355,21 +378,25 @@ public:
     );
 
     void start_wev();
+    void add_balancer_fd(std::string str, int fd) { balancer_fd_map_[str] = fd; balancer_rev_map_[str] = new ev_io(); }
 
     ev_io *wev(int n);
 
     ev_io *rev(int n);
+
+    std::map<std::string, int> balancer_fd_map_;
+    std::map<std::string, ev_io*> balancer_rev_map_;
+    struct ev_loop *loop_;
 
 private:
     std::map <uint64_t, std::unique_ptr<Handler>> handlers_;
     // ctos_ is a mapping between client's initial connection ID, and
     // server chosen connection ID.
     std::map <uint64_t, uint64_t> ctos_;
-    struct ev_loop *loop_;
     SSL_CTX *ssl_ctx_;
     std::vector<int> fds_;
-  std::map<std::string, int> server_fd_map_;
     int unicast_fd_;
+    int anycast_fd_;
     MYSQL *mysql_;
     ev_io wevs_[20];
     ev_io revs_[20];

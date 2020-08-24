@@ -1,0 +1,1 @@
+sudo ./examples/server2 10.166.0.2 4433 4434 /home/johnsonli1993/Workspace/Hestia/experiment/gcloud/data2/server.key /home/johnsonli1993/Workspace/Hestia/experiment/gcloud/data2/server.crt --unicast_nic ens4 --anycast_nic lo

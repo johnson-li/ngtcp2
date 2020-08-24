@@ -821,6 +821,15 @@ int Client::OnMigration(uint32_t peer_address) {
   Address address;
   auto fd = create_sock(address, ip_str, ip_str, config.port);
   std::cerr << "bind fd2_ with " << ip_str << std::endl;
+  struct sockaddr_in sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sin_family = AF_INET;
+  sa.sin_port = htons(8834);
+  sa.sin_addr.s_addr = htonl(INADDR_ANY);
+  if (bind(fd2_, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+    std::cerr << "bind: " << strerror(errno) << std::endl;
+    return -1;
+  }
   if (-1 == connect(fd, &address.su.sa, address.len)) {
     std::cerr << "connect: " << strerror(errno) << std::endl;
     return -1;
@@ -966,7 +975,7 @@ int Client::on_read(bool primary) {
   std::array<uint8_t, 65536> buf;
 
   for (;;) {
-//    std::cerr << "recvfrom " << (primary ? "fd_" : "fd2_") << std::endl;
+    std::cerr << "recvfrom " << (primary ? "fd_" : "fd2_") << std::endl;
     auto nread = recvfrom(primary ? fd_ : fd2_, buf.data(), buf.size(), MSG_DONTWAIT, nullptr, nullptr);
 
     if (nread == -1) {

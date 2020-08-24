@@ -381,12 +381,12 @@ public:
     void add_balancer_fd(std::string str, int fd) { balancer_fd_map_[str] = fd; balancer_rev_map_[str] = new ev_io(); }
 
     ev_io *wev(int n);
-
     ev_io *rev(int n);
 
     std::map<std::string, int> balancer_fd_map_;
     std::map<std::string, ev_io*> balancer_rev_map_;
     struct ev_loop *loop_;
+    int unicast_fd_send_;
 
 private:
     std::map <uint64_t, std::unique_ptr<Handler>> handlers_;

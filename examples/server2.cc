@@ -48,6 +48,8 @@
 #include "shared.h"
 #include "http.h"
 
+#define ETHER_TYPE 0x0800
+
 using namespace ngtcp2;
 
 namespace {
@@ -774,7 +776,6 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
                   uint32_t version) {
   int rv;
 
-  std::cerr << "init handler" << std::endl;
   remote_addr_.len = salen;
   memcpy(&remote_addr_.su.sa, sa, salen);
   max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV4;
@@ -821,8 +822,6 @@ int Handler::init(int fd, const sockaddr *sa, socklen_t salen,
   settings.server_unicast_ttl = 1000;
   settings.test_metadata = 2333;
   settings.ack_delay_exponent = NGTCP2_DEFAULT_ACK_DELAY_EXPONENT;
-
-  std::cerr << "test metadata: " << settings.test_metadata << std::endl;
 
   auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
   std::generate(std::begin(settings.stateless_reset_token),
@@ -1770,10 +1769,29 @@ int Server::on_read(int fd, bool unicast, bool forwarded) {
 
   auto nread =
       recvfrom(fd, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
-  char str[INET_ADDRSTRLEN];
-  inet_ntop(AF_INET, &(su.in.sin_addr), str, INET_ADDRSTRLEN);
-  std::cerr << "Got packet from " << str << ":" << ntohs(su.in.sin_port)
-            << ", " << fd << ", unicast: " << unicast << ", forwarded: "
+  uint8_t *data = buf.data();
+  ether_header *eh = (ether_header *) data;
+  iphdr *iph = (iphdr *) (data + sizeof(ether_header));
+  udphdr *udph = (udphdr *) (data + sizeof(iphdr) + sizeof(ether_header));
+  if (iph->protocol != IPPROTO_UDP) {
+    return 0;
+  }
+  if (unicast && udph->dest != htons(config.port_server)) {
+    return 0;
+  }
+  if (!unicast && udph->dest != htons(config.port_balancer)) {
+    return 0;
+  }
+
+  char str1[INET_ADDRSTRLEN], str2[INET_ADDRSTRLEN];
+  struct sockaddr_storage client_addr, server_addr;
+  ((struct sockaddr_in *) &client_addr)->sin_addr.s_addr = iph->saddr;
+  ((struct sockaddr_in *) &server_addr)->sin_addr.s_addr = iph->daddr;
+  inet_ntop(AF_INET, &((struct sockaddr_in *) &client_addr)->sin_addr, str1, sizeof str1);
+  inet_ntop(AF_INET, &((struct sockaddr_in *) &client_addr)->sin_addr, str2, sizeof str2);
+  std::cerr << "Got packet from " << str1 << ":" << ntohs(udph->source)
+            << " to " << str2 << ":" << ntohs(udph->dest)
+            << ", fd: " << fd << ", unicast: " << unicast << ", forwarded: "
             << forwarded << std::endl;
   if (nread == -1) {
     std::cerr << "recvfrom: " << strerror(errno) << std::endl;
@@ -1781,6 +1799,9 @@ int Server::on_read(int fd, bool unicast, bool forwarded) {
     return 0;
   }
   if (forwarded || unicast) {
+    su.in.sin_family = AF_INET;
+    su.in.sin_port = udph->source;
+    su.in.sin_addr = ((struct sockaddr_in *) &client_addr)->sin_addr;
     return on_read_server(fd, su, addrlen, buf, nread);
   } else {
     return on_read_balancer(fd, su, addrlen, buf, nread);
@@ -1811,13 +1832,6 @@ int Server::on_read_balancer(int fd, sockaddr_union su, socklen_t addrlen, std::
   ((struct sockaddr_in *) &server_addr)->sin_addr.s_addr = iph->daddr;
   inet_ntop(AF_INET, &((struct sockaddr_in *) &client_addr)->sin_addr, sender_ip, sizeof sender_ip);
   inet_ntop(AF_INET, &((struct sockaddr_in *) &server_addr)->sin_addr, target_ip, sizeof target_ip);
-  if (iph->protocol != IPPROTO_UDP) {
-    return 0;
-  }
-  if (udph->dest != htons(config.port_balancer)) {
-    return 0;
-  }
-
   MYSQL_ROW row = NULL;
   MYSQL_RES *result, *result2, *result3;
   std::ostringstream sql;
@@ -1934,7 +1948,9 @@ int Server::on_read_server(int fd, sockaddr_union su, socklen_t addrlen, std::ar
     return 0;
   }
 
-  auto data = buf.data();
+  int header_size = sizeof(udphdr) + sizeof(iphdr) + sizeof(ether_header);
+  auto data = buf.data() + header_size;
+  nread -= header_size;
   rv = ngtcp2_pkt_decode_hd(&hd, data, nread);
   if (rv < 0) {
     std::cerr << "Could not decode QUIC packet header: " << ngtcp2_strerror(rv)
@@ -2120,10 +2136,14 @@ int Server::send_packet(int fd, Address &remote_addr, Buffer &buf) {
 
   char str[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &(remote_addr.su.in.sin_addr), str, INET_ADDRSTRLEN);
+  sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = remote_addr.su.in.sin_port;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
   do {
-    std::cerr << "sendto address: " << str << ":" << ntohs(remote_addr.su.in.sin_port) << ", fd: " << fd << std::endl;
-    nwrite = sendto(fd, buf.rpos(), buf.size(), 0, &remote_addr.su.sa,
-                    remote_addr.len);
+    std::cerr << "sendto address: " << str << ":" << ntohs(remote_addr.su.in.sin_port) << ", fd: " << unicast_fd_send_ << std::endl;
+    nwrite = sendto(unicast_fd_send_, buf.rpos(), buf.size(), 0, (const struct sockaddr *) &addr, sizeof(addr));
   } while ((nwrite == -1) && (errno == EINTR) && (eintr_retries-- > 0));
 
   if (nwrite == -1) {
@@ -2409,32 +2429,50 @@ void create_sock(std::vector<int> *fds, const char *unicast_nic,
   getifaddrs(&addrs);
   tmp = addrs;
 
+  sockaddr_in source;
+  memset(&source, 0, sizeof(source));
+  source.sin_family = AF_INET;
+  source.sin_port = htons(port_server);
+  source.sin_addr.s_addr = htonl(INADDR_ANY);
+  if ((s.unicast_fd_send_ = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+      std::cerr << "create socket: " << strerror(errno) << std::endl;
+      return;
+  }
+  if (bind(s.unicast_fd_send_, (struct sockaddr *) &source, sizeof(source)) < 0) {
+    std::cerr << "failed to bind port: " << strerror(errno) << std::endl;
+      return;
+  }
+  std::cerr << "set unicast fd for send: " << s.unicast_fd_send_ << std::endl;
+
   while (tmp) {
     if (tmp->ifa_addr->sa_family != AF_INET) {
       tmp = tmp->ifa_next;
       continue;
     }
-    fd = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+    if ((fd = socket(PF_PACKET, SOCK_RAW, htons(ETHER_TYPE))) == -1) {
+        std::cerr << "Failed to create socket: " << strerror(errno) << std::endl;
+    }
     int port = !strcmp(tmp->ifa_name, unicast_nic) ? port_server : port_balancer;
     printf("Registered interface: %s, %d on port %d\n", tmp->ifa_name, fd, port);
-    if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, sizeof(tmp->ifa_name)) < 0) {
+    int on = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, static_cast<socklen_t>(sizeof(on))) == -1) {
       std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
       close(fd);
       tmp = tmp->ifa_next;
       continue;
     }
-    struct sockaddr_in sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sin_family = AF_INET;
-    sa.sin_port = htons(port);
-    sa.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-      std::cerr << "failed to listen on udp port: " << tmp->ifa_name << ":" << ntohs(sa.sin_port) << ", " << strerror(errno) << std::endl;
+    if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, tmp->ifa_name, strlen(tmp->ifa_name)) < 0) {
+      std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
       close(fd);
       tmp = tmp->ifa_next;
       continue;
     }
+    /* if (setsockopt(fd, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on))) {
+      std::cerr << "Failed to bind on interface: " << tmp->ifa_name << ", " << strerror(errno) << std::endl;
+      close(fd);
+      tmp = tmp->ifa_next;
+      continue;
+    } */
     fds->push_back(fd);
     if (!strcmp(tmp->ifa_name, unicast_nic)) {
       // Read from unicast nic

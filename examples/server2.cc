@@ -1798,10 +1798,10 @@ int Server::on_read(int fd, bool unicast, bool forwarded) {
     // TODO Handle running out of fd
     return 0;
   }
+  su.in.sin_family = AF_INET;
+  su.in.sin_port = udph->source;
+  su.in.sin_addr = ((struct sockaddr_in *) &client_addr)->sin_addr;
   if (forwarded || unicast) {
-    su.in.sin_family = AF_INET;
-    su.in.sin_port = udph->source;
-    su.in.sin_addr = ((struct sockaddr_in *) &client_addr)->sin_addr;
     return on_read_server(fd, su, addrlen, buf, nread);
   } else {
     return on_read_balancer(fd, su, addrlen, buf, nread);

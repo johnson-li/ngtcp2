@@ -2584,18 +2584,6 @@ static int conn_recv_handshake_pkt(ngtcp2_conn *conn, const uint8_t *pkt,
   payload = conn->decrypt_buf.base;
   payloadlen = (size_t)nwrite;
   
-  printf("????????????\n");
-  uint8_t *q=payload;
-  if (payloadlen>1180)
-  { 
-    printf("%d\n",payloadlen);
-    for (size_t i=0;i<payloadlen;i++)
-    { 
-      if (i>=151&&i<171) printf("%c",*q);
-      q++;
-    }
-    printf("\n");
-  }
   for (; payloadlen;) {
     nread = ngtcp2_pkt_decode_frame(fr, payload, payloadlen);
     if (nread < 0) {
@@ -4674,10 +4662,6 @@ int ngtcp2_conn_get_domain_name(ngtcp2_conn *conn, const uint8_t *data, size_t d
   
   payload = conn->decrypt_buf.base;
   payloadlen = (size_t)nwrite;
-  printf("%d\n",payloadlen);
-  for (int i=0;i<payloadlen;i++)
-      printf("%d,",*(payload+i));
-  printf("\n");
 
   return 0;
 }

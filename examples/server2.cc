@@ -2648,6 +2648,7 @@ int main(int argc, char **argv) {
   }
 
   auto addr = argv[optind++];
+  config.unicast_ip = addr;
   auto port_balancer = argv[optind++];
   auto port_server = argv[optind++];
   auto private_key_file = argv[optind++];

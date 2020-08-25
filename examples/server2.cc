@@ -2140,7 +2140,7 @@ int Server::send_packet(int fd, Address &remote_addr, Buffer &buf) {
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = remote_addr.su.in.sin_port;
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_addr = remote_addr.su.in.sin_addr;
   do {
     std::cerr << "sendto address: " << str << ":" << ntohs(remote_addr.su.in.sin_port) << ", fd: " << unicast_fd_send_ << std::endl;
     nwrite = sendto(unicast_fd_send_, buf.rpos(), buf.size(), 0, (const struct sockaddr *) &addr, sizeof(addr));
